@@ -1,0 +1,21 @@
+services:
+  whoisai:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # 容器内 localhost 不是宿主机：LLM 代理跑在宿主机时用 host.docker.internal
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:4141/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-dummy}
+      - MODEL_PRIMARY=${MODEL_PRIMARY:-claude-opus-4.6}
+      - MODEL_FALLBACK=${MODEL_FALLBACK:-gpt-4.1}
+      - HOST_KEY=${HOST_KEY:-whoisai}
+    extra_hosts:
+      # Linux 上让 host.docker.internal 指向宿主机（Mac/Windows 的 Docker Desktop 自带）
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # 游戏状态快照持久化，容器重启不丢记录
+      - ./data:/app/data
+      # 领域素材包：改动后重启容器即可生效，无需重新 build 镜像
+      - ./server/domain-notes:/app/domain-notes
+    restart: unless-stopped
