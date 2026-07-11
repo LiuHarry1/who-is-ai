@@ -127,8 +127,10 @@ export interface AdminData {
     personas: Record<RoomId, PersonaCfg[]>;
     prompts: AiPromptsCfg;
     mainQuestions: Record<RoomId, string>;
+    models: { baseUrl: string; apiKey: string; primary: string; fallback: string };
   };
   domainNotes: Record<RoomId, string>;
+  modelList: string[];
 }
 
 export interface HostState {

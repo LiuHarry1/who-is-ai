@@ -1,0 +1,96 @@
+{
+  "phase": "LOBBY",
+  "phaseEndsAt": null,
+  "rooms": {
+    "tech": {
+      "id": "tech",
+      "title": "技术聊天室",
+      "mainQuestion": "你印象最深的一次 debug 经历是什么？",
+      "players": [
+        {
+          "id": "1755397c-04d0-448c-82e4-14af835ac812",
+          "token": "8451138d1c3b1ed79a6ad0d5c2c9793c",
+          "roomId": "tech",
+          "codename": "",
+          "realName": "AI·老c",
+          "isAI": true,
+          "persona": {
+            "name": "老c",
+            "background": "做 non-SoC memory test 快 8 年的老工程师，NAND、DRAM 都测过，从 load board 设计评审到量产 yield 分析都掺和过，见过太多\"pattern没问题是探针脏了\"的坑",
+            "style": "话不多但一针见血，喜欢用\"这个吧\"\"说实话\"开头，爱讲一句\"先查硬件再怀疑程序\"，偶尔冒出黑色幽默"
+          },
+          "connected": true,
+          "revealed": false
+        }
+      ],
+      "messages": [],
+      "votes": {
+        "r1": [],
+        "r2": []
+      }
+    },
+    "life": {
+      "id": "life",
+      "title": "生活聊天室",
+      "mainQuestion": "最近有什么开心的事情？",
+      "players": [
+        {
+          "id": "d96c5699-1e04-4cf2-8d53-2b806a8ede6a",
+          "token": "1221f06a11ad99f857e52f5a8cc6f0f2",
+          "roomId": "life",
+          "codename": "",
+          "realName": "AI·楠楠",
+          "isAI": true,
+          "persona": {
+            "name": "楠楠",
+            "background": "同样在 Advantest 写 test program，T2000 组的。租房党，爱看演唱会，最近在纠结要不要换个离公司近点的房子，因为赶机台时间经常早出晚归",
+            "style": "语气温和，会认真回应别人的话题，偶尔emo一下但很快自我调侃回来"
+          },
+          "connected": true,
+          "revealed": false
+        },
+        {
+          "id": "42130fb0-b317-480c-af27-a31d33e4abde",
+          "token": "3b355d44b5af00d66b8f388b49d8418d",
+          "roomId": "life",
+          "codename": "",
+          "realName": "AI·大伟",
+          "isAI": true,
+          "persona": {
+            "name": "大伟",
+            "background": "Advantest 做 memory test 的工程师，养了一只叫煤球的猫，最近沉迷钓鱼但基本钓不到，晚上跑 retention test 的时候顺便研究钓点，被同事笑\"人和机台一起过夜\"",
+            "style": "说话慢条斯理带点冷幽默，喜欢自黑，偶尔突然来一句很真诚的话"
+          },
+          "connected": true,
+          "revealed": false
+        }
+      ],
+      "messages": [],
+      "votes": {
+        "r1": [],
+        "r2": []
+      }
+    }
+  },
+  "usage": {
+    "1755397c-04d0-448c-82e4-14af835ac812": {
+      "msgs1": 0,
+      "msgs2": 0,
+      "mentionUsed2": false,
+      "lastMsgTs": 0
+    },
+    "d96c5699-1e04-4cf2-8d53-2b806a8ede6a": {
+      "msgs1": 0,
+      "msgs2": 0,
+      "mentionUsed2": false,
+      "lastMsgTs": 0
+    },
+    "42130fb0-b317-480c-af27-a31d33e4abde": {
+      "msgs1": 0,
+      "msgs2": 0,
+      "mentionUsed2": false,
+      "lastMsgTs": 0
+    }
+  },
+  "codenamesAssigned": false
+}

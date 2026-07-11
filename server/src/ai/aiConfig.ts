@@ -22,6 +22,8 @@ export interface AiConfig {
   personas: Record<RoomId, Persona[]>;
   prompts: AiPrompts;
   mainQuestions: Record<RoomId, string>;
+  /** LLM 接入配置（默认取环境变量，可在主持人控制台修改） */
+  models: { baseUrl: string; apiKey: string; primary: string; fallback: string };
 }
 
 // ---------- 默认值 ----------
@@ -125,6 +127,12 @@ const DEFAULTS: AiConfig = {
     tech: '你印象最深的一次 debug 经历是什么？',
     life: '最近有什么开心的事情？',
   },
+  models: {
+    baseUrl: config.openaiBaseUrl,
+    apiKey: config.openaiApiKey,
+    primary: config.modelPrimary,
+    fallback: config.modelFallback,
+  },
 };
 
 // ---------- 加载 / 保存 ----------
@@ -142,6 +150,10 @@ function load(): AiConfig {
       if (saved.personas?.life) base.personas.life = saved.personas.life;
       if (saved.prompts) base.prompts = { ...base.prompts, ...saved.prompts };
       if (saved.mainQuestions) base.mainQuestions = { ...base.mainQuestions, ...saved.mainQuestions };
+      if (saved.models?.baseUrl) base.models.baseUrl = saved.models.baseUrl;
+      if (saved.models?.apiKey) base.models.apiKey = saved.models.apiKey;
+      if (saved.models?.primary) base.models.primary = saved.models.primary;
+      if (saved.models?.fallback) base.models.fallback = saved.models.fallback;
       console.log('[ai] 已加载自定义 AI 配置 ai-config.json');
     }
   } catch (err) {

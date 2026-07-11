@@ -17,7 +17,7 @@ const saveBtn =
 
 function SectionStatus({ msg }: { msg: string }) {
   if (!msg) return null;
-  const isErr = msg.startsWith('保存失败') || msg.includes('错误');
+  const isErr = msg.includes('失败') || msg.includes('错误');
   return <span className={`text-xs ${isErr ? 'text-red-400' : 'text-emerald-400'}`}>{msg}</span>;
 }
 
@@ -67,10 +67,103 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
         请在等待大厅阶段把对应房间的 AI 先"- AI"再"+ AI"重新加入。
       </p>
 
+      <Models data={data} />
       <MainQuestions data={data} />
       <DomainNotes data={data} />
       <Personas data={data} />
       <Prompts data={data} />
+    </div>
+  );
+}
+
+// ---------- 模型 ----------
+
+function Models({ data }: { data: AdminData }) {
+  const [models, setModels] = useState(data.config.models);
+  const [modelList, setModelList] = useState(data.modelList);
+  const [msg, setMsg] = useState('');
+  const [testMsg, setTestMsg] = useState('');
+  const [testing, setTesting] = useState(false);
+  const modelFields = [
+    { key: 'primary' as const, label: '主模型（对话生成）' },
+    { key: 'fallback' as const, label: '降级模型（主模型失败/超时后使用）' },
+  ];
+  return (
+    <div className={card}>
+      <div className="font-bold">🤖 LLM 接入</div>
+      <p className="text-xs text-slate-500">
+        下拉列表来自当前接入点的 /models 接口（共 {modelList.length} 个），也可以直接手动输入模型名。
+        注意：模型必须支持 chat/completions 接口（如 gpt-5.5 只支持 responses API，不可用）。
+        保存后立即生效；改了 URL/Key 后建议点"测试连接"确认可用。
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="block space-y-1">
+          <span className="text-xs text-slate-400">接入地址 Base URL（OpenAI 兼容，一般以 /v1 结尾）</span>
+          <input
+            className={inputCls + ' font-mono'}
+            value={models.baseUrl}
+            onChange={(e) => setModels({ ...models, baseUrl: e.target.value })}
+            placeholder="http://localhost:4141/v1"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs text-slate-400">API Key</span>
+          <input
+            className={inputCls + ' font-mono'}
+            type="password"
+            value={models.apiKey}
+            onChange={(e) => setModels({ ...models, apiKey: e.target.value })}
+            placeholder="dummy"
+          />
+        </label>
+      </div>
+      <datalist id="model-options">
+        {modelList.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {modelFields.map((f) => (
+          <label key={f.key} className="block space-y-1">
+            <span className="text-xs text-slate-400">{f.label}</span>
+            <input
+              className={inputCls + ' font-mono'}
+              list="model-options"
+              value={models[f.key]}
+              onChange={(e) => setModels({ ...models, [f.key]: e.target.value })}
+              placeholder="选择或输入模型名"
+            />
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          className={saveBtn}
+          disabled={!models.baseUrl.trim() || !models.primary.trim() || !models.fallback.trim()}
+          onClick={async () => {
+            const res = await emitAck<SaveAck>('admin:save', { section: 'models', data: models });
+            setMsg(res.ok ? '已保存' : `保存失败: ${res.error}`);
+            if (res.ok && res.data) setModelList(res.data.modelList);
+          }}
+        >
+          保存 LLM 配置
+        </button>
+        <button
+          className="rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 px-4 py-2 text-sm"
+          disabled={testing}
+          onClick={async () => {
+            setTesting(true);
+            setTestMsg('测试中…');
+            const res = await emitAck<{ ok: boolean; error?: string; reply?: string }>('admin:testLLM', {});
+            setTestMsg(res.ok ? `连接正常，模型回复: ${res.reply}` : `连接失败: ${res.error}`);
+            setTesting(false);
+          }}
+        >
+          测试连接（用已保存的配置）
+        </button>
+        <SectionStatus msg={msg} />
+        <SectionStatus msg={testMsg} />
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { AIManager } from './ai/scheduler.js';
 import { pickPersona } from './ai/personas.js';
 import { getAiConfig, saveAiConfig, resetAiConfig } from './ai/aiConfig.js';
 import { domainNotes, setDomainNotes } from './ai/domainNotes.js';
+import { listModels, testConnection } from './llm.js';
 import type { Persona, RoomId } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -214,18 +215,19 @@ io.on('connection', (socket) => {
 
   // ---------- 管理：在线编辑 AI 配置 ----------
 
-  socket.on('admin:get', (_payload, cb) => {
+  socket.on('admin:get', async (_payload, cb) => {
     if (!socket.data.isHost) return cb?.({ ok: false, error: '无权限' });
     cb?.({
       ok: true,
       data: {
         config: getAiConfig(),
         domainNotes: { tech: domainNotes('tech'), life: domainNotes('life') },
+        modelList: await listModels(),
       },
     });
   });
 
-  socket.on('admin:save', (payload: { section?: string; data?: unknown }, cb) => {
+  socket.on('admin:save', async (payload: { section?: string; data?: unknown }, cb) => {
     if (!socket.data.isHost) return cb?.({ ok: false, error: '无权限' });
     try {
       const cfg = structuredClone(getAiConfig());
@@ -279,6 +281,18 @@ io.on('connection', (socket) => {
           saveAiConfig(cfg);
           break;
         }
+        case 'models': {
+          const d = payload.data as { baseUrl?: string; apiKey?: string; primary?: string; fallback?: string };
+          if (d?.baseUrl?.trim()) cfg.models.baseUrl = d.baseUrl.trim();
+          if (d?.apiKey?.trim()) cfg.models.apiKey = d.apiKey.trim();
+          if (d?.primary?.trim()) cfg.models.primary = d.primary.trim();
+          if (d?.fallback?.trim()) cfg.models.fallback = d.fallback.trim();
+          saveAiConfig(cfg);
+          console.log(
+            `[admin] LLM 配置已更新: ${cfg.models.baseUrl} (${cfg.models.primary} -> ${cfg.models.fallback})`,
+          );
+          break;
+        }
         case 'resetDefaults':
           resetAiConfig();
           applyMainQuestions();
@@ -291,12 +305,18 @@ io.on('connection', (socket) => {
         data: {
           config: getAiConfig(),
           domainNotes: { tech: domainNotes('tech'), life: domainNotes('life') },
+          modelList: await listModels(),
         },
       });
     } catch (err) {
       console.error('[admin:save] error:', err);
       cb?.({ ok: false, error: '保存失败' });
     }
+  });
+
+  socket.on('admin:testLLM', async (_payload, cb) => {
+    if (!socket.data.isHost) return cb?.({ ok: false, error: '无权限' });
+    cb?.(await testConnection());
   });
 
   socket.on('disconnect', () => {
