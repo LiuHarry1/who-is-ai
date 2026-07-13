@@ -68,6 +68,8 @@ export interface RoomState {
 export interface GameState {
   phase: Phase;
   phaseEndsAt: number | null;
+  /** 本局启用的房间：每局游戏只玩其中一个聊天室 */
+  activeRoom: RoomId;
   rooms: Record<RoomId, RoomState>;
   usage: Record<string, PlayerUsage>;
   codenamesAssigned: boolean;

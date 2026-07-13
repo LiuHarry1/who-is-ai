@@ -73,10 +73,12 @@ export default function Host() {
         onBigScreen={() => setView('big')}
         onAdmin={() => setView('admin')}
       />
-      <div className="grid lg:grid-cols-2 gap-4">
-        {state.rooms.map((room) => (
-          <RoomPanel key={room.id} room={room} phase={state.phase} />
-        ))}
+      <div className="max-w-3xl">
+        {state.rooms
+          .filter((room) => room.id === state.activeRoom)
+          .map((room) => (
+            <RoomPanel key={room.id} room={room} phase={state.phase} />
+          ))}
       </div>
     </div>
   );
@@ -154,6 +156,32 @@ function ControlBar({
         </div>
       </div>
 
+      {/* 本局房间：每局只玩一个聊天室，大厅阶段可切换 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-slate-400">本局房间</span>
+        {state.rooms.map((r) => (
+          <button
+            key={r.id}
+            disabled={state.phase !== 'LOBBY'}
+            onClick={() => {
+              void hostAction({ type: 'setActiveRoom', roomId: r.id }).then((res) => {
+                if (!res.ok && res.error) alert(res.error);
+              });
+            }}
+            className={`text-xs rounded-lg px-3 py-1.5 border transition disabled:cursor-not-allowed ${
+              r.id === state.activeRoom
+                ? 'bg-sky-600 border-sky-400 font-bold'
+                : 'bg-slate-800 border-slate-700 hover:border-slate-500 disabled:opacity-40'
+            }`}
+          >
+            {r.id === 'tech' ? '💻' : '🌍'} {r.title}
+          </button>
+        ))}
+        {state.phase !== 'LOBBY' && (
+          <span className="text-xs text-slate-600">（仅大厅阶段可切换）</span>
+        )}
+      </div>
+
       {/* 阶段导航 */}
       <div className="flex flex-wrap gap-1.5">
         {PHASE_ORDER.map((p, i) => (
@@ -209,7 +237,7 @@ function ControlBar({
         <input
           value={announce}
           onChange={(e) => setAnnounce(e.target.value)}
-          placeholder="以主持人身份向两个房间广播消息…"
+          placeholder="以主持人身份向本局房间广播消息…"
           className="flex-1 rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
         />
         <button
@@ -363,9 +391,8 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
 // ---------- 揭晓大屏 ----------
 
 function BigScreen({ state, onExit }: { state: HostState; onExit: () => void }) {
-  const [roomIdx, setRoomIdx] = useState(0);
   const [step, setStep] = useState(0); // 0=投票对比 1=逐个揭晓 2=奖项
-  const room = state.rooms[roomIdx];
+  const room = state.rooms.find((r) => r.id === state.activeRoom) ?? state.rooms[0];
 
   return (
     <div className="min-h-full p-8 max-w-6xl mx-auto space-y-6">
@@ -373,22 +400,9 @@ function BigScreen({ state, onExit }: { state: HostState; onExit: () => void }) 
         <h1 className="text-3xl font-black">
           🎬 揭晓时刻 — <span className="text-emerald-400">{room.title}</span>
         </h1>
-        <div className="flex gap-2">
-          {state.rooms.map((r, i) => (
-            <button
-              key={r.id}
-              onClick={() => setRoomIdx(i)}
-              className={`rounded-xl px-4 py-2 text-sm ${
-                i === roomIdx ? 'bg-emerald-600 font-bold' : 'bg-slate-800'
-              }`}
-            >
-              {r.title}
-            </button>
-          ))}
-          <button onClick={onExit} className="rounded-xl bg-slate-800 px-4 py-2 text-sm">
-            退出大屏
-          </button>
-        </div>
+        <button onClick={onExit} className="rounded-xl bg-slate-800 px-4 py-2 text-sm">
+          退出大屏
+        </button>
       </div>
 
       <div className="flex gap-2">

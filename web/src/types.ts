@@ -138,6 +138,7 @@ export interface HostState {
   phase: Phase;
   phaseEndsAt: number | null;
   codenamesAssigned: boolean;
+  activeRoom: RoomId;
   rooms: HostRoom[];
   awards: { detectives: AwardEntry[]; actors: AwardEntry[]; ais: AwardEntry[] };
 }

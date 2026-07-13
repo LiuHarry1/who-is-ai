@@ -293,7 +293,7 @@ function ChatPanel({
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 [scrollbar-gutter:stable]">
         {room.messages.map((m) => {
           const mine = m.playerId === playerId;
           const mentionsMe = m.mentions.includes(playerId);

@@ -39,19 +39,25 @@ function applyMainQuestions() {
   engine.setMainQuestion('life', q.life);
 }
 
-/** 默认 AI 配置：技术房 1 个，生活房 2 个（其中一个是隐藏的第 2 个 AI） */
+/** 默认 AI 配置：只布置到本局启用的房间，2 个（对外宣称 1 个，第 2 个是隐藏 AI） */
 function seedDefaultAIs() {
+  const roomId = engine.state.activeRoom;
   const usedNames: string[] = [];
-  const seed = (roomId: RoomId, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const persona = pickPersona(roomId, usedNames);
-      usedNames.push(persona.name);
-      engine.addAI(roomId, persona);
+  for (let i = 0; i < 2; i++) {
+    const persona = pickPersona(roomId, usedNames);
+    usedNames.push(persona.name);
+    engine.addAI(roomId, persona);
+  }
+  console.log(`[boot] 默认 AI 已就位：${roomId} 房 2 个（其中 1 个对外隐藏）`);
+}
+
+/** 清空两个房间的 AI（切换本局房间时使用） */
+function clearAllAIs() {
+  for (const roomId of ['tech', 'life'] as const) {
+    while (engine.removeAI(roomId)) {
+      // removeAI 一次移除一个，循环到清空
     }
-  };
-  seed('tech', 1);
-  seed('life', 2);
-  console.log('[boot] 默认 AI 已就位：技术房 1 个，生活房 2 个');
+  }
 }
 
 // ---------- HTTP & Socket.IO ----------
@@ -82,6 +88,14 @@ function scheduleBroadcast() {
 engine.on('change', scheduleBroadcast);
 
 io.on('connection', (socket) => {
+  // ---------- 公共信息 ----------
+
+  // 入口页用：查询本局启用的房间
+  socket.on('meta:get', (_payload, cb) => {
+    const room = engine.activeRoomState();
+    cb?.({ ok: true, activeRoom: engine.state.activeRoom, title: room.title, phase: engine.state.phase });
+  });
+
   // ---------- 玩家 ----------
 
   socket.on('join', (payload: { roomId?: RoomId; name?: string; token?: string }, cb) => {
@@ -183,6 +197,16 @@ io.on('connection', (socket) => {
           if (!engine.removeAI(roomId)) return cb?.({ ok: false, error: '该房间没有 AI' });
           break;
         }
+        case 'setActiveRoom': {
+          const roomId = payload.roomId as RoomId;
+          if (!(roomId in engine.state.rooms)) return cb?.({ ok: false, error: '房间不存在' });
+          const res = engine.setActiveRoom(roomId);
+          if (!res.ok) return cb?.(res);
+          // AI 跟着房间走：清掉旧房间的 AI，重新布置到新房间
+          clearAllAIs();
+          seedDefaultAIs();
+          break;
+        }
         case 'reveal':
           engine.reveal(String(payload.playerId ?? ''));
           break;
@@ -193,7 +217,7 @@ io.on('connection', (socket) => {
           const roomId = payload.roomId as RoomId | 'all';
           const text = String(payload.text ?? '').trim();
           if (!text) return cb?.({ ok: false, error: '内容为空' });
-          const targets: RoomId[] = roomId === 'all' ? ['tech', 'life'] : [roomId];
+          const targets: RoomId[] = roomId === 'all' ? [engine.state.activeRoom] : [roomId];
           for (const r of targets) if (r in engine.state.rooms) engine.postSystem(r, text);
           break;
         }

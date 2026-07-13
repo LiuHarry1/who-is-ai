@@ -58,10 +58,11 @@ function freshRoom(id: RoomId): RoomState {
   };
 }
 
-function freshState(): GameState {
+function freshState(activeRoom: RoomId = 'tech'): GameState {
   return {
     phase: 'LOBBY',
     phaseEndsAt: null,
+    activeRoom,
     rooms: { tech: freshRoom('tech'), life: freshRoom('life') },
     usage: {},
     codenamesAssigned: false,
@@ -91,6 +92,8 @@ export class GameEngine extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
 
   loadState(s: GameState) {
+    // 兼容没有 activeRoom 字段的旧快照
+    if (!s.activeRoom) s.activeRoom = 'tech';
     this.state = s;
     // 重启后所有连接都断了
     for (const room of Object.values(this.state.rooms)) {
@@ -102,9 +105,25 @@ export class GameEngine extends EventEmitter {
   reset() {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    this.state = freshState();
+    this.state = freshState(this.state.activeRoom);
     this.emit('phase', this.state.phase);
     this.emit('change');
+  }
+
+  /** 切换本局启用的房间，仅允许在大厅阶段（此时还没人开始玩） */
+  setActiveRoom(roomId: RoomId): ActionResult {
+    if (this.state.phase !== 'LOBBY') return { ok: false, error: '只能在大厅阶段切换房间' };
+    if (this.state.activeRoom === roomId) return { ok: true };
+    const humans = this.activeRoomState().players.filter((p) => !p.isAI);
+    if (humans.length > 0) return { ok: false, error: '当前房间已有玩家加入，请先重置游戏' };
+    this.state.activeRoom = roomId;
+    this.emit('activeRoomChanged', roomId);
+    this.emit('change');
+    return { ok: true };
+  }
+
+  activeRoomState(): RoomState {
+    return this.state.rooms[this.state.activeRoom];
   }
 
   // ---------- 查询 ----------
@@ -150,6 +169,9 @@ export class GameEngine extends EventEmitter {
   join(roomId: RoomId, realName: string): { ok: boolean; error?: string; player?: Player } {
     const room = this.state.rooms[roomId];
     if (!room) return { ok: false, error: '房间不存在' };
+    if (roomId !== this.state.activeRoom) {
+      return { ok: false, error: `本局游戏在「${this.activeRoomState().title}」进行，请从首页重新进入` };
+    }
     if (this.state.phase === 'REVEAL') return { ok: false, error: '游戏已结束' };
     const humans = room.players.filter((p) => !p.isAI);
     if (humans.length >= MAX_HUMANS_PER_ROOM) return { ok: false, error: '房间已满' };
@@ -244,25 +266,18 @@ export class GameEngine extends EventEmitter {
     this.state.phaseEndsAt = duration ? Date.now() + duration * 1000 : null;
     this.armTimer();
 
+    const room = this.activeRoomState();
     if (phase === 'ROUND1_CHAT') {
-      for (const room of Object.values(this.state.rooms)) {
-        this.postSystem(room.id, `第一轮聊天开始！主问题：${room.mainQuestion} 每人至少发言一次，可以 @ 任何人追问。`);
-      }
+      this.postSystem(room.id, `第一轮聊天开始！主问题：${room.mainQuestion} 每人至少发言一次，可以 @ 任何人追问。`);
     } else if (phase === 'ROUND1_VOTE') {
-      for (const room of Object.values(this.state.rooms)) {
-        this.postSystem(room.id, '第一轮投票开始：你认为谁是 AI？请附上你的理由。');
-      }
+      this.postSystem(room.id, '第一轮投票开始：你认为谁是 AI？请附上你的理由。');
     } else if (phase === 'ROUND2_CHAT') {
-      for (const room of Object.values(this.state.rooms)) {
-        this.postSystem(
-          room.id,
-          '系统已经根据你们第一轮的判断，对部分玩家的行为模型做了调整。第二轮聊天开始！注意：本轮每人最多 @ 一人提问。',
-        );
-      }
+      this.postSystem(
+        room.id,
+        '系统已经根据你们第一轮的判断，对部分玩家的行为模型做了调整。第二轮聊天开始！注意：本轮每人最多 @ 一人提问。',
+      );
     } else if (phase === 'ROUND2_VOTE') {
-      for (const room of Object.values(this.state.rooms)) {
-        this.postSystem(room.id, '最终投票开始：这一轮的结果将决定胜负！');
-      }
+      this.postSystem(room.id, '最终投票开始：这一轮的结果将决定胜负！');
     }
 
     this.emit('phase', phase);
@@ -477,6 +492,7 @@ export class GameEngine extends EventEmitter {
       phase: this.state.phase,
       phaseEndsAt: this.state.phaseEndsAt,
       codenamesAssigned: this.state.codenamesAssigned,
+      activeRoom: this.state.activeRoom,
       rooms: Object.values(this.state.rooms).map((room) => ({
         id: room.id,
         title: room.title,
@@ -505,21 +521,21 @@ export class GameEngine extends EventEmitter {
     const actors: { codename: string; realName: string; roomId: RoomId; votes: number }[] = [];
     const ais: { codename: string; realName: string; roomId: RoomId; votes: number }[] = [];
 
-    for (const room of Object.values(this.state.rooms)) {
-      const allVotes = [...room.votes.r1, ...room.votes.r2];
-      for (const p of room.players) {
-        const received = allVotes.filter((v) => v.targetId === p.id).length;
-        if (p.isAI) {
-          ais.push({ codename: p.codename, realName: p.realName, roomId: room.id, votes: received });
-        } else {
-          const correct = allVotes.filter((v) => {
-            if (v.voterId !== p.id) return false;
-            const target = room.players.find((x) => x.id === v.targetId);
-            return target?.isAI ?? false;
-          }).length;
-          detectives.push({ codename: p.codename, realName: p.realName, roomId: room.id, score: correct });
-          actors.push({ codename: p.codename, realName: p.realName, roomId: room.id, votes: received });
-        }
+    // 只统计本局启用的房间，避免空房间的 0 票 AI 混进榜单
+    const room = this.activeRoomState();
+    const allVotes = [...room.votes.r1, ...room.votes.r2];
+    for (const p of room.players) {
+      const received = allVotes.filter((v) => v.targetId === p.id).length;
+      if (p.isAI) {
+        ais.push({ codename: p.codename, realName: p.realName, roomId: room.id, votes: received });
+      } else {
+        const correct = allVotes.filter((v) => {
+          if (v.voterId !== p.id) return false;
+          const target = room.players.find((x) => x.id === v.targetId);
+          return target?.isAI ?? false;
+        }).length;
+        detectives.push({ codename: p.codename, realName: p.realName, roomId: room.id, score: correct });
+        actors.push({ codename: p.codename, realName: p.realName, roomId: room.id, votes: received });
       }
     }
 
