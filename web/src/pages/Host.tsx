@@ -8,6 +8,8 @@ import {
   PHASE_ORDER,
   ROOM_LABEL,
   voteTargets,
+  type ChatMessage,
+  type HostPlayer,
   type HostRoom,
   type HostState,
   type Phase,
@@ -68,51 +70,45 @@ export default function Host() {
     return <AdminPanel onExit={() => setView('panel')} />;
   }
 
-  return (
-    <div className="min-h-full p-4 max-w-7xl mx-auto space-y-4">
-      <ControlBar
-        state={state}
-        offset={offset}
-        onBigScreen={() => setView('big')}
-        onAdmin={() => setView('admin')}
-      />
-      <div className="max-w-3xl">
-        {state.rooms
-          .filter((room) => room.id === state.activeRoom)
-          .map((room) => (
-            <RoomPanel key={room.id} room={room} phase={state.phase} />
-          ))}
-      </div>
-    </div>
-  );
+  return <ConsoleView state={state} offset={offset} onBigScreen={() => setView('big')} onAdmin={() => setView('admin')} />;
 }
 
 function AuthForm({ error, onAuth }: { error: string; onAuth: (key: string) => void }) {
   const [key, setKey] = useState('');
   return (
     <div className="min-h-full flex items-center justify-center p-6">
-      <form
-        className="w-full max-w-sm surface rounded-2xl p-6 space-y-4 anim-rise"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (key) onAuth(key);
-        }}
-      >
-        <div className="text-center space-y-1">
+      <div className="w-full max-w-sm space-y-6 anim-rise">
+        <div className="text-center space-y-2">
           <div className="text-[11px] tracking-[0.2em] uppercase text-[var(--muted)]">Host Console</div>
-          <h1 className="font-display text-2xl font-bold">主持人控制台</h1>
+          <h1 className="font-display text-3xl font-bold">
+            主持人<span className="text-[var(--signal-bright)]">控制台</span>
+          </h1>
+          <p className="text-sm text-[var(--muted)] leading-relaxed">输入主持人口令，进入本局控制台。</p>
         </div>
-        <input
-          autoFocus
-          type="password"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder="主持人口令"
-          className="field w-full rounded-xl px-4 py-3"
-        />
-        {error && <div className="text-[var(--danger)] text-sm">{error}</div>}
-        <button className="btn-primary w-full rounded-xl py-3">进入</button>
-      </form>
+        <form
+          className="surface rounded-2xl p-5 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (key) onAuth(key);
+          }}
+        >
+          <label className="block space-y-1.5">
+            <span className="text-xs text-[var(--muted)]">主持人口令</span>
+            <input
+              autoFocus
+              type="password"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="••••••••"
+              className="field w-full rounded-xl px-4 py-3 text-sm"
+            />
+          </label>
+          {error && <div className="text-[var(--danger)] text-sm">{error}</div>}
+          <button type="submit" className="btn-primary w-full rounded-xl py-3">
+            进入控制台
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -121,7 +117,33 @@ function hostAction(payload: Record<string, unknown>) {
   return emitAck('host:action', payload);
 }
 
-function ControlBar({
+function PhaseProgress({ phase }: { phase: Phase }) {
+  const idx = PHASE_ORDER.indexOf(phase);
+  return (
+    <div className="px-1">
+      <div className="flex gap-1">
+        {PHASE_ORDER.map((p, i) => (
+          <div
+            key={p}
+            title={PHASE_LABEL[p]}
+            className={`h-1 flex-1 rounded-full transition-colors ${
+              i < idx
+                ? 'bg-[var(--signal)]/45'
+                : i === idx
+                  ? 'bg-[var(--signal-bright)]'
+                  : 'bg-[rgba(232,236,242,0.08)]'
+            }`}
+          />
+        ))}
+      </div>
+      <div className="mt-1 text-[10px] text-[var(--muted)] tracking-wide">
+        阶段 {idx + 1}/{PHASE_ORDER.length} · {PHASE_LABEL[phase]}
+      </div>
+    </div>
+  );
+}
+
+function ConsoleView({
   state,
   offset,
   onBigScreen,
@@ -132,11 +154,81 @@ function ControlBar({
   onBigScreen: () => void;
   onAdmin: () => void;
 }) {
+  const room = state.rooms.find((r) => r.id === state.activeRoom) ?? state.rooms[0];
+  const themeClass = state.activeRoom === 'food' ? 'room-theme-food' : 'room-theme-travel';
+  const humanCount = room.players.filter((p) => !p.isAI).length;
+  const aiCount = room.players.filter((p) => p.isAI).length;
+
+  return (
+    <div className={`h-full flex flex-col max-w-3xl mx-auto ${themeClass}`}>
+      <header className="shrink-0 px-4 py-3 border-b border-[var(--line)] bg-[rgba(11,14,18,0.8)] backdrop-blur-md space-y-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-display font-semibold truncate">
+              {ROOM_LABEL[room.id].emoji} {room.title} · 主持人
+            </div>
+            <div className="text-xs text-[var(--muted)] flex items-center gap-2 flex-wrap mt-0.5">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-[rgba(61,155,143,0.12)] text-[var(--signal-bright)] px-1.5 py-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal)]" />
+                {PHASE_LABEL[state.phase]}
+              </span>
+              <span className="text-[var(--copper)]">
+                {humanCount} 人 + {aiCount} AI
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onAdmin}
+              className="chip rounded-lg px-2.5 py-1 text-[11px] hover:border-[rgba(212,165,116,0.4)]"
+            >
+              设置
+            </button>
+            <button type="button" onClick={onBigScreen} className="btn-copper rounded-lg px-2.5 py-1 text-[11px]">
+              揭晓大屏
+            </button>
+            <Countdown endsAt={state.phaseEndsAt} offset={offset} />
+          </div>
+        </div>
+        <PhaseProgress phase={state.phase} />
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+          {room.players
+            .filter((p) => p.codename)
+            .map((p) => (
+              <span
+                key={p.id}
+                title={p.isAI ? `AI · ${p.realName}` : `${p.realName}${p.connected ? '' : '（离线）'}`}
+                className={`inline-flex items-center gap-1.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
+                  p.isAI
+                    ? 'border-[rgba(224,122,106,0.4)] bg-[rgba(224,122,106,0.1)] text-[var(--danger)]'
+                    : 'border-[rgba(232,236,242,0.08)] bg-[rgba(26,33,43,0.65)] text-[var(--muted)]'
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    p.isAI || p.connected ? 'bg-[var(--signal)]' : 'bg-[var(--muted)]/40'
+                  }`}
+                />
+                {p.codename}
+              </span>
+            ))}
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <ControlCard state={state} room={room} />
+        <RoomPanel room={room} phase={state.phase} />
+      </div>
+    </div>
+  );
+}
+
+function ControlCard({ state, room }: { state: HostState; room: HostRoom }) {
   const [announce, setAnnounce] = useState('');
   const [maxHumansDraft, setMaxHumansDraft] = useState(String(state.maxHumans));
   const idx = PHASE_ORDER.indexOf(state.phase);
-  const humanCount =
-    state.rooms.find((r) => r.id === state.activeRoom)?.players.filter((p) => !p.isAI).length ?? 0;
+  const humanCount = room.players.filter((p) => !p.isAI).length;
 
   useEffect(() => {
     setMaxHumansDraft(String(state.maxHumans));
@@ -144,70 +236,7 @@ function ControlBar({
 
   return (
     <div className="surface rounded-2xl p-4 space-y-4 anim-rise">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div className="text-[11px] tracking-[0.18em] uppercase text-[var(--muted)]">Control Deck</div>
-          <h1 className="font-display text-xl font-bold">Who is AI? 主持人控制台</h1>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Countdown endsAt={state.phaseEndsAt} offset={offset} />
-          <button onClick={onAdmin} className="chip rounded-xl px-4 py-2 text-sm hover:border-[rgba(212,165,116,0.4)]">
-            设置
-          </button>
-          <button onClick={onBigScreen} className="btn-copper rounded-xl px-4 py-2 text-sm">
-            揭晓大屏
-          </button>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-[var(--muted)]">本局房间</span>
-        {state.rooms.map((r) => (
-          <button
-            key={r.id}
-            disabled={state.phase !== 'LOBBY'}
-            onClick={() => {
-              void hostAction({ type: 'setActiveRoom', roomId: r.id }).then((res) => {
-                if (!res.ok && res.error) alert(res.error);
-              });
-            }}
-            className={`text-xs rounded-lg px-3 py-1.5 transition disabled:cursor-not-allowed ${
-              r.id === state.activeRoom ? 'chip-active' : 'chip disabled:opacity-40'
-            }`}
-          >
-            {ROOM_LABEL[r.id].emoji} {r.title}
-          </button>
-        ))}
-        {state.phase !== 'LOBBY' && <span className="text-xs text-[var(--muted)]/60">（仅大厅可切换）</span>}
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-[var(--muted)]">人类人数上限</span>
-        <input
-          type="number"
-          min={1}
-          max={50}
-          value={maxHumansDraft}
-          onChange={(e) => setMaxHumansDraft(e.target.value)}
-          className="field w-20 rounded-lg px-2 py-1 text-sm"
-        />
-        <button
-          onClick={() => {
-            void hostAction({ type: 'setMaxHumans', maxHumans: Number(maxHumansDraft) }).then((res) => {
-              if (!res.ok && res.error) alert(res.error);
-            });
-          }}
-          className="chip text-xs rounded-lg px-3 py-1.5 hover:border-[rgba(212,165,116,0.4)]"
-        >
-          保存上限
-        </button>
-        <span className="text-xs text-[var(--muted)]">
-          已加入人类 <span className="text-[var(--text)] font-bold">{humanCount}</span>
-          {' / '}
-          上限 <span className="text-[var(--text)] font-bold">{state.maxHumans}</span>
-          <span className="text-[var(--muted)]/60 ml-1">（不含 AI）</span>
-        </span>
-      </div>
+      <div className="text-[11px] tracking-[0.18em] uppercase text-[var(--muted)]">Control Deck</div>
 
       <div className="flex flex-wrap gap-1.5">
         {PHASE_ORDER.map((p, i) => (
@@ -252,24 +281,82 @@ function ControlBar({
         </button>
       </div>
 
-      <div className="flex gap-2">
-        <input
-          value={announce}
-          onChange={(e) => setAnnounce(e.target.value)}
-          placeholder="以主持人身份向本局房间广播…"
-          className="field flex-1 rounded-xl px-3 py-2 text-sm"
-        />
-        <button
-          onClick={() => {
-            if (announce.trim()) {
-              void hostAction({ type: 'announce', roomId: 'all', text: announce.trim() });
-              setAnnounce('');
-            }
-          }}
-          className="chip rounded-xl px-4 py-2 text-sm hover:border-[rgba(212,165,116,0.4)]"
-        >
-          广播
-        </button>
+      <div className="border-t border-[var(--line)] pt-3 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-[var(--muted)]">本局房间</span>
+          {state.rooms.map((r) => (
+            <button
+              key={r.id}
+              disabled={state.phase !== 'LOBBY'}
+              onClick={() => {
+                void hostAction({ type: 'setActiveRoom', roomId: r.id }).then((res) => {
+                  if (!res.ok && res.error) alert(res.error);
+                });
+              }}
+              className={`text-xs rounded-lg px-3 py-1.5 transition disabled:cursor-not-allowed ${
+                r.id === state.activeRoom ? 'chip-active' : 'chip disabled:opacity-40'
+              }`}
+            >
+              {ROOM_LABEL[r.id].emoji} {r.title}
+            </button>
+          ))}
+          {state.phase !== 'LOBBY' && <span className="text-xs text-[var(--muted)]/60">（仅大厅可切换）</span>}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-[var(--muted)]">人类人数上限</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={maxHumansDraft}
+            onChange={(e) => setMaxHumansDraft(e.target.value)}
+            className="field w-20 rounded-lg px-2 py-1 text-sm"
+          />
+          <button
+            onClick={() => {
+              void hostAction({ type: 'setMaxHumans', maxHumans: Number(maxHumansDraft) }).then((res) => {
+                if (!res.ok && res.error) alert(res.error);
+              });
+            }}
+            className="chip text-xs rounded-lg px-3 py-1.5 hover:border-[rgba(212,165,116,0.4)]"
+          >
+            保存上限
+          </button>
+          <span className="text-xs text-[var(--muted)]">
+            已加入人类 <span className="text-[var(--text)] font-bold">{humanCount}</span>
+            {' / '}
+            上限 <span className="text-[var(--text)] font-bold">{state.maxHumans}</span>
+            <span className="text-[var(--muted)]/60 ml-1">（不含 AI）</span>
+          </span>
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            value={announce}
+            onChange={(e) => setAnnounce(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && announce.trim()) {
+                void hostAction({ type: 'announce', roomId: 'all', text: announce.trim() });
+                setAnnounce('');
+              }
+            }}
+            placeholder="以主持人身份向本局房间广播…"
+            className="field flex-1 rounded-xl px-3.5 py-2.5 text-sm"
+          />
+          <button
+            onClick={() => {
+              if (announce.trim()) {
+                void hostAction({ type: 'announce', roomId: 'all', text: announce.trim() });
+                setAnnounce('');
+              }
+            }}
+            disabled={!announce.trim()}
+            className="btn-copper shrink-0 rounded-xl px-4 py-2.5 text-sm"
+          >
+            广播
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -293,14 +380,80 @@ function AIModelInput({ playerId, model }: { playerId: string; model: string }) 
   );
 }
 
+function avatarHue(codename: string): string {
+  let h = 0;
+  for (let i = 0; i < codename.length; i++) h = (h + codename.charCodeAt(i) * 17) % 360;
+  return `hsl(${h} 32% 40%)`;
+}
+
+function renderMessageText(text: string) {
+  const parts = text.split(/(@玩家\d+)/g);
+  return parts.map((part, i) =>
+    part.startsWith('@玩家') ? (
+      <span key={i} className="font-semibold text-[var(--copper)]">
+        {part}
+      </span>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
+function formatTs(ts: number) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+}
+
+function HostChatMessage({ m, sender }: { m: ChatMessage; sender: HostPlayer | undefined }) {
+  if (m.system) {
+    return (
+      <div className="text-center msg-enter">
+        <span className="inline-block text-xs text-[var(--warn)] bg-[rgba(230,192,123,0.1)] border border-[rgba(230,192,123,0.28)] rounded-full px-3.5 py-1.5 leading-relaxed max-w-[92%]">
+          {m.text}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-2 msg-enter">
+      <span
+        className="mt-5 h-7 w-7 shrink-0 rounded-full grid place-items-center text-[10px] font-bold text-white/90"
+        style={{ background: avatarHue(m.codename) }}
+      >
+        {m.codename.replace(/\D/g, '') || '?'}
+      </span>
+      <div className="max-w-[85%]">
+        <div className="text-[11px] text-[var(--muted)] px-1.5 mb-1 tracking-wide flex items-center gap-2">
+          <span>{m.codename}</span>
+          {sender &&
+            (sender.isAI ? (
+              <span className="text-[var(--danger)] font-semibold">AI · {sender.realName}</span>
+            ) : (
+              <span className="text-[var(--signal-bright)]">{sender.realName}</span>
+            ))}
+          <span className="font-mono text-[10px] opacity-60">{formatTs(m.ts)}</span>
+        </div>
+        <div
+          className={`inline-block rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm text-left break-words leading-relaxed ${
+            sender?.isAI ? 'bubble-mention' : 'bubble-other'
+          }`}
+        >
+          {renderMessageText(m.text)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
   const [tab, setTab] = useState<'players' | 'chat' | 'votes'>('players');
   const humans = room.players.filter((p) => !p.isAI);
   const ais = room.players.filter((p) => p.isAI);
+  const playerById = useMemo(() => new Map(room.players.map((p) => [p.id, p])), [room.players]);
 
   return (
     <div className="surface rounded-2xl p-4 space-y-3 anim-rise-delay-1">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <span className="font-display font-semibold">
             {ROOM_LABEL[room.id].emoji} {room.title}
@@ -313,13 +466,13 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
           <div className="flex gap-1.5">
             <button
               onClick={() => void hostAction({ type: 'addAI', roomId: room.id })}
-              className="chip text-xs rounded-lg px-2.5 py-1.5"
+              className="chip text-xs rounded-lg px-2.5 py-1.5 hover:border-[rgba(212,165,116,0.4)]"
             >
               + AI
             </button>
             <button
               onClick={() => void hostAction({ type: 'removeAI', roomId: room.id })}
-              className="chip text-xs rounded-lg px-2.5 py-1.5"
+              className="chip text-xs rounded-lg px-2.5 py-1.5 hover:border-[rgba(212,165,116,0.4)]"
             >
               - AI
             </button>
@@ -332,7 +485,9 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`text-xs rounded-lg px-3 py-1.5 ${tab === t ? 'chip-active' : 'chip'}`}
+            className={`text-xs rounded-full px-3.5 py-1.5 transition ${
+              tab === t ? 'chip-active' : 'chip hover:border-[rgba(212,165,116,0.35)]'
+            }`}
           >
             {t === 'players' ? '玩家' : t === 'chat' ? '聊天' : '投票'}
           </button>
@@ -343,21 +498,19 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-[var(--muted)] text-xs text-left">
-              <th className="py-1">代号</th>
-              <th>真名 / 模型</th>
-              <th className="text-center">R1票</th>
-              <th className="text-center">R2票</th>
-              <th className="text-right">操作</th>
+              <th className="py-1 font-medium">代号</th>
+              <th className="font-medium">真名 / 模型</th>
+              <th className="text-center font-medium">R1票</th>
+              <th className="text-center font-medium">R2票</th>
+              <th className="text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             {room.players.map((p) => (
               <tr key={p.id} className="border-t border-[var(--line)]">
                 <td className="py-2 font-mono">
-                  {p.codename || '待分配'}
-                  {!p.connected && !p.isAI && (
-                    <span className="text-[var(--danger)] text-xs ml-1">离线</span>
-                  )}
+                  {p.codename || <span className="text-[var(--muted)]/60">待分配</span>}
+                  {!p.connected && !p.isAI && <span className="text-[var(--danger)] text-xs ml-1">离线</span>}
                 </td>
                 <td>
                   {p.isAI ? (
@@ -372,15 +525,15 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
                     </>
                   )}
                 </td>
-                <td className="text-center">{p.votesR1}</td>
-                <td className="text-center">{p.votesR2}</td>
+                <td className="text-center tabular-nums">{p.votesR1}</td>
+                <td className="text-center tabular-nums">{p.votesR2}</td>
                 <td className="text-right">
                   {p.revealed ? (
                     <span className="text-xs text-[var(--copper)]">已揭晓</span>
                   ) : (
                     <button
                       onClick={() => void hostAction({ type: 'reveal', playerId: p.id })}
-                      className="chip text-xs rounded px-2 py-1 hover:border-[rgba(212,165,116,0.45)]"
+                      className="chip text-xs rounded-lg px-2 py-1 hover:border-[rgba(212,165,116,0.45)]"
                     >
                       揭晓
                     </button>
@@ -393,31 +546,30 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
       )}
 
       {tab === 'chat' && (
-        <div className="max-h-80 overflow-y-auto space-y-2 text-sm">
+        <div className="max-h-96 overflow-y-auto space-y-3.5 pr-1 [scrollbar-gutter:stable]">
           {room.messages.map((m) => (
-            <div key={m.id} className={m.system ? 'text-[var(--warn)] text-xs' : ''}>
-              <span className="text-[var(--muted)] font-mono text-xs">{m.codename}</span>{' '}
-              <span className="break-words">{m.text}</span>
-            </div>
+            <HostChatMessage key={m.id} m={m} sender={playerById.get(m.playerId)} />
           ))}
-          {room.messages.length === 0 && <div className="text-[var(--muted)] text-xs">暂无消息</div>}
+          {room.messages.length === 0 && (
+            <div className="text-center py-8 text-xs text-[var(--muted)] tracking-wide">等待发言信号…</div>
+          )}
         </div>
       )}
 
       {tab === 'votes' && (
-        <div className="space-y-3 text-sm max-h-80 overflow-y-auto">
+        <div className="space-y-3 text-sm max-h-96 overflow-y-auto">
           {(['r1', 'r2'] as const).map((r) => (
             <div key={r}>
               <div className="text-xs text-[var(--muted)] font-bold mb-1">
                 第{r === 'r1' ? '一' : '二'}轮（{room.votes[r].length} 票）
               </div>
               {room.votes[r].map((v, i) => {
-                const voter = room.players.find((p) => p.id === v.voterId);
+                const voter = playerById.get(v.voterId);
                 const targets = voteTargets(v)
-                  .map((id) => room.players.find((p) => p.id === id)?.codename ?? '?')
+                  .map((id) => playerById.get(id)?.codename ?? '?')
                   .join('、');
                 return (
-                  <div key={i} className="text-xs py-1 border-t border-[var(--line)]">
+                  <div key={i} className="text-xs py-1.5 border-t border-[var(--line)]">
                     <span className="font-mono">{voter?.codename ?? '?'}</span>
                     {voter?.isAI && <span className="text-[var(--danger)]">(AI)</span>} →{' '}
                     <span className="font-mono font-bold text-[var(--copper)]">{targets}</span>
@@ -425,6 +577,7 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
                   </div>
                 );
               })}
+              {room.votes[r].length === 0 && <div className="text-xs text-[var(--muted)]/60 py-1">暂无投票</div>}
             </div>
           ))}
         </div>
@@ -436,13 +589,17 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
 function BigScreen({ state, onExit }: { state: HostState; onExit: () => void }) {
   const [step, setStep] = useState(0);
   const room = state.rooms.find((r) => r.id === state.activeRoom) ?? state.rooms[0];
+  const themeClass = state.activeRoom === 'food' ? 'room-theme-food' : 'room-theme-travel';
 
   return (
-    <div className="min-h-full p-6 sm:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="font-display text-3xl font-bold">
-          揭晓时刻 — <span className="text-[var(--signal-bright)]">{room.title}</span>
-        </h1>
+    <div className={`min-h-full p-6 sm:p-8 max-w-6xl mx-auto space-y-6 ${themeClass}`}>
+      <div className="flex items-center justify-between gap-3 flex-wrap anim-rise">
+        <div>
+          <div className="text-[11px] tracking-[0.2em] uppercase text-[var(--muted)]">The Reveal</div>
+          <h1 className="font-display text-3xl font-bold">
+            揭晓时刻 — <span className="text-[var(--signal-bright)]">{room.title}</span>
+          </h1>
+        </div>
         <button onClick={onExit} className="chip rounded-xl px-4 py-2 text-sm">
           退出大屏
         </button>
@@ -460,7 +617,7 @@ function BigScreen({ state, onExit }: { state: HostState; onExit: () => void }) 
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap anim-rise-delay-1">
         {['① 投票对比', '② 逐个揭晓', '③ LLM 复盘', '④ 颁奖'].map((label, i) => (
           <button
             key={i}
@@ -484,7 +641,7 @@ function VoteCompare({ room }: { room: HostRoom }) {
   const max = Math.max(1, ...room.players.map((p) => Math.max(p.votesR1, p.votesR2)));
   const sorted = [...room.players].sort((a, b) => b.votesR2 - a.votesR2);
   return (
-    <div className="surface rounded-2xl p-6 space-y-4">
+    <div className="surface rounded-2xl p-6 space-y-4 anim-rise-delay-2">
       <div className="text-[var(--muted)] text-sm">
         两轮得票对比 — <span className="text-[var(--signal-bright)]">■ 第一轮</span>{' '}
         <span className="text-[var(--copper)]">■ 第二轮</span>
@@ -492,10 +649,10 @@ function VoteCompare({ room }: { room: HostRoom }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[var(--muted)] text-xs text-left">
-            <th className="py-1">玩家</th>
-            <th className="text-center">第一轮</th>
-            <th className="text-center">第二轮</th>
-            <th className="text-center">变化</th>
+            <th className="py-1 font-medium">玩家</th>
+            <th className="text-center font-medium">第一轮</th>
+            <th className="text-center font-medium">第二轮</th>
+            <th className="text-center font-medium">变化</th>
           </tr>
         </thead>
         <tbody>
@@ -505,9 +662,9 @@ function VoteCompare({ room }: { room: HostRoom }) {
                 {p.codename}
                 {p.revealed && (p.isAI ? ' · AI' : ` (${p.realName})`)}
               </td>
-              <td className="text-center text-[var(--signal-bright)]">{p.votesR1}</td>
-              <td className="text-center text-[var(--copper)]">{p.votesR2}</td>
-              <td className="text-center">
+              <td className="text-center text-[var(--signal-bright)] tabular-nums">{p.votesR1}</td>
+              <td className="text-center text-[var(--copper)] tabular-nums">{p.votesR2}</td>
+              <td className="text-center tabular-nums">
                 {p.votesR2 - p.votesR1 >= 0 ? `+${p.votesR2 - p.votesR1}` : p.votesR2 - p.votesR1}
               </td>
             </tr>
@@ -534,7 +691,7 @@ function StepReveal({ room }: { room: HostRoom }) {
   const nextToReveal = order.find((p) => !p.revealed);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 anim-rise-delay-2">
       <div className="flex items-center gap-3 flex-wrap">
         <button
           disabled={!nextToReveal}
@@ -594,7 +751,7 @@ function RecapView({ recap }: { recap: RecapReport | null }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 anim-rise-delay-2">
       <div className="surface rounded-2xl p-6 space-y-2">
         <div className="font-display text-xl font-bold">投票变化点评</div>
         <p className="text-[var(--text)]/90 leading-relaxed">{recap.voteCommentary}</p>
@@ -635,7 +792,7 @@ function Awards({ state }: { state: HostState }) {
   const { detectives, actors, ais } = state.awards;
   const card = 'surface rounded-2xl p-6 space-y-3';
   return (
-    <div className="grid md:grid-cols-3 gap-4">
+    <div className="grid md:grid-cols-3 gap-4 anim-rise-delay-2">
       <div className={card}>
         <div className="font-display text-xl font-bold">最强侦探</div>
         <div className="text-xs text-[var(--muted)]">两轮投票猜中 AI 次数最多</div>
