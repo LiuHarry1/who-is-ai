@@ -3,7 +3,7 @@ import path from 'node:path';
 
 /**
  * 领域素材包：赛前用 coding agent / 人工准备的行话速查表和战例，
- * 放在 domain-notes/<roomId>.md（如 domain-notes/tech.md），启动时加载注入 prompt。
+ * 放在 domain-notes/<roomId>.md（如 domain-notes/food.md），启动时加载注入 prompt。
  * 文件不存在则跳过，不是必需品；也可在主持人控制台在线编辑。
  */
 

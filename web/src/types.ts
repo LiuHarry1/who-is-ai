@@ -8,7 +8,7 @@ export type Phase =
   | 'ROUND2_VOTE'
   | 'REVEAL';
 
-export type RoomId = 'tech' | 'life';
+export type RoomId = 'food' | 'travel';
 
 export const PHASE_LABEL: Record<Phase, string> = {
   LOBBY: '等待大厅',
@@ -32,12 +32,18 @@ export const PHASE_ORDER: Phase[] = [
   'REVEAL',
 ];
 
+export const ROOM_LABEL: Record<RoomId, { emoji: string; title: string }> = {
+  food: { emoji: '🍜', title: '美食聊天室' },
+  travel: { emoji: '✈️', title: '旅游聊天室' },
+};
+
 export interface PublicPlayer {
   id: string;
   codename: string;
   connected: boolean;
   isAI: boolean | null;
   realName: string | null;
+  userId: string | null;
   revealed: boolean;
 }
 
@@ -55,15 +61,41 @@ export interface ChatMessage {
 
 export interface Vote {
   voterId: string;
-  targetId: string;
+  targetIds: string[];
+  /** 兼容旧字段 */
+  targetId?: string;
   reason: string;
   ts: number;
 }
+
+export function voteTargets(v: Vote): string[] {
+  if (Array.isArray(v.targetIds) && v.targetIds.length > 0) return v.targetIds;
+  if (v.targetId) return [v.targetId];
+  return [];
+}
+
+export interface RecapHighlight {
+  codename: string;
+  text: string;
+  analysis: string;
+}
+
+export interface RecapReport {
+  voteCommentary: string;
+  humanLikeAi: RecapHighlight[];
+  aiLikeHuman: RecapHighlight[];
+  behaviorNotes: string;
+  generatedAt: number;
+}
+
+export type CampOutcome = 'human' | 'ai';
 
 export interface PublicState {
   now: number;
   phase: Phase;
   phaseEndsAt: number | null;
+  outcome: CampOutcome | null;
+  recap: RecapReport | null;
   room: {
     id: RoomId;
     title: string;
@@ -73,7 +105,7 @@ export interface PublicState {
     messages: ChatMessage[];
     votedCount: number;
   };
-  limits: { maxMsgsPerRound: number };
+  limits: { maxMsgsPerRound: number; maxHumans: number };
   usage: Record<string, { msgs: number; mentionUsed2: boolean }>;
 }
 
@@ -81,7 +113,9 @@ export interface HostPlayer {
   id: string;
   codename: string;
   realName: string;
+  userId: string;
   isAI: boolean;
+  model: string;
   persona: { name: string; background: string; style: string } | null;
   connected: boolean;
   revealed: boolean;
@@ -101,6 +135,7 @@ export interface HostRoom {
 export interface AwardEntry {
   codename: string;
   realName: string;
+  userId: string;
   roomId: RoomId;
   score?: number;
   votes?: number;
@@ -114,8 +149,8 @@ export interface PersonaCfg {
 
 export interface AiPromptsCfg {
   baseRules: string;
-  roomContextTech: string;
-  roomContextLife: string;
+  roomContextFood: string;
+  roomContextTravel: string;
   strategyHigh: string;
   strategyLow: string;
   strategyMid: string;
@@ -139,6 +174,9 @@ export interface HostState {
   phaseEndsAt: number | null;
   codenamesAssigned: boolean;
   activeRoom: RoomId;
+  maxHumans: number;
+  outcome: CampOutcome | null;
+  recap: RecapReport | null;
   rooms: HostRoom[];
   awards: { detectives: AwardEntry[]; actors: AwardEntry[]; ais: AwardEntry[] };
 }

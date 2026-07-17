@@ -36,16 +36,16 @@ function personaText(codename: string, persona: Persona): string {
 - 说话风格：${persona.style}`;
 }
 
-/** 房间听众背景 + 领域素材：决定 AI 说话的"行话浓度"和分寸 */
+/** 房间听众背景 + 领域素材：决定 AI 说话的分寸 */
 function roomContext(room: RoomState): string {
   const p = getAiConfig().prompts;
   let out = '';
-  const ctx = room.id === 'tech' ? p.roomContextTech : p.roomContextLife;
+  const ctx = room.id === 'food' ? p.roomContextFood : p.roomContextTravel;
   if (ctx) out += '\n' + ctx;
   const notes = domainNotes(room.id);
   if (notes) {
     out +=
-      '\n以下是给你参考的领域素材（真实的行话和典型经历，可以当作自己的经历改编着用）。' +
+      '\n以下是给你参考的领域素材（真实的细节和典型经历，可以当作自己的经历改编着用）。' +
       '注意：别照抄原句，一条消息里最多用到一个点，大部分发言可以完全不用它：\n---\n' +
       notes +
       '\n---';

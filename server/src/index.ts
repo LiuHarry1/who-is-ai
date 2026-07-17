@@ -11,12 +11,11 @@ import { AIManager } from './ai/scheduler.js';
 import { pickPersona } from './ai/personas.js';
 import { getAiConfig, saveAiConfig, resetAiConfig } from './ai/aiConfig.js';
 import { domainNotes, setDomainNotes } from './ai/domainNotes.js';
+import { generateRecap } from './ai/recap.js';
 import { listModels, testConnection } from './llm.js';
-import type { Persona, RoomId } from './types.js';
+import type { Persona, Phase, RoomId } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// ---------- 引擎 & AI ----------
 
 const engine = new GameEngine();
 const aiManager = new AIManager(engine);
@@ -32,14 +31,28 @@ if (snapshot) {
 }
 attachSnapshot(engine);
 
-/** 把（可能被主持人编辑过的）主问题应用到房间 */
+/** 揭晓阶段异步生成 LLM 复盘 */
+engine.on('phase', (phase: Phase) => {
+  if (phase !== 'REVEAL') return;
+  const room = engine.activeRoomState();
+  const outcome = engine.state.outcome;
+  void (async () => {
+    try {
+      const recap = await generateRecap(room, outcome);
+      if (engine.state.phase === 'REVEAL') engine.setRecap(recap);
+    } catch (err) {
+      console.warn('[recap] 生成失败:', (err as Error).message);
+    }
+  })();
+});
+
 function applyMainQuestions() {
   const q = getAiConfig().mainQuestions;
-  engine.setMainQuestion('tech', q.tech);
-  engine.setMainQuestion('life', q.life);
+  engine.setMainQuestion('food', q.food);
+  engine.setMainQuestion('travel', q.travel);
 }
 
-/** 默认 AI 配置：只布置到本局启用的房间，2 个（对外宣称 1 个，第 2 个是隐藏 AI） */
+/** 默认 AI：本局房间布置 2 个（第1个 Claude，第2个 GPT） */
 function seedDefaultAIs() {
   const roomId = engine.state.activeRoom;
   const usedNames: string[] = [];
@@ -48,59 +61,94 @@ function seedDefaultAIs() {
     usedNames.push(persona.name);
     engine.addAI(roomId, persona);
   }
-  console.log(`[boot] 默认 AI 已就位：${roomId} 房 2 个（其中 1 个对外隐藏）`);
+  console.log(`[boot] 默认 AI 已就位：${roomId} 房 2 个`);
 }
 
-/** 清空两个房间的 AI（切换本局房间时使用） */
 function clearAllAIs() {
-  for (const roomId of ['tech', 'life'] as const) {
+  for (const roomId of ['food', 'travel'] as const) {
     while (engine.removeAI(roomId)) {
-      // removeAI 一次移除一个，循环到清空
+      /* clear */
     }
   }
 }
-
-// ---------- HTTP & Socket.IO ----------
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true } });
 
+function clientIp(req: express.Request): string {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length > 0) return xff.split(',')[0]!.trim();
+  if (Array.isArray(xff) && xff[0]) return xff[0].split(',')[0]!.trim();
+  return req.socket.remoteAddress || '-';
+}
+
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - started;
+    console.log(
+      `[http] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms}ms` +
+        ` ip=${clientIp(req)}` +
+        ` host=${req.headers.host || '-'}`,
+    );
+  });
+  next();
+});
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: 'whoisai',
+    phase: engine.state.phase,
+    uptimeSec: Math.floor(process.uptime()),
+    time: new Date().toISOString(),
+  });
+});
+
 const publicDir = process.env.PUBLIC_DIR || path.resolve(__dirname, '../public');
-if (fs.existsSync(publicDir)) {
+const hasPublic = fs.existsSync(publicDir);
+if (hasPublic) {
   app.use(express.static(publicDir));
   app.get(/^\/(?!socket\.io).*/, (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
   });
+} else {
+  console.warn(`[boot] public 目录不存在: ${publicDir}（仅 API/Socket，无前端静态页）`);
 }
 
-// 状态广播（debounce 合并高频变化）
 let broadcastTimer: NodeJS.Timeout | null = null;
 function scheduleBroadcast() {
   if (broadcastTimer) return;
   broadcastTimer = setTimeout(() => {
     broadcastTimer = null;
-    io.to('room:tech').emit('state', engine.publicRoomState('tech'));
-    io.to('room:life').emit('state', engine.publicRoomState('life'));
+    io.to('room:food').emit('state', engine.publicRoomState('food'));
+    io.to('room:travel').emit('state', engine.publicRoomState('travel'));
     io.to('hosts').emit('host:state', engine.hostState());
   }, 100);
 }
 engine.on('change', scheduleBroadcast);
 
 io.on('connection', (socket) => {
-  // ---------- 公共信息 ----------
+  const hdr = socket.handshake.headers;
+  const ip =
+    (typeof hdr['x-forwarded-for'] === 'string' && hdr['x-forwarded-for'].split(',')[0]?.trim()) ||
+    socket.handshake.address;
+  console.log(`[socket] connect id=${socket.id} ip=${ip}`);
 
-  // 入口页用：查询本局启用的房间
   socket.on('meta:get', (_payload, cb) => {
     const room = engine.activeRoomState();
-    cb?.({ ok: true, activeRoom: engine.state.activeRoom, title: room.title, phase: engine.state.phase });
+    cb?.({
+      ok: true,
+      activeRoom: engine.state.activeRoom,
+      title: room.title,
+      phase: engine.state.phase,
+      maxHumans: engine.state.maxHumans,
+    });
   });
 
-  // ---------- 玩家 ----------
-
-  socket.on('join', (payload: { roomId?: RoomId; name?: string; token?: string }, cb) => {
+  socket.on('join', (payload: { roomId?: RoomId; name?: string; userId?: string; token?: string }, cb) => {
     try {
-      // 重连：token 优先
       if (payload.token) {
         const player = engine.findByToken(payload.token);
         if (player) {
@@ -122,7 +170,7 @@ io.on('connection', (socket) => {
         cb?.({ ok: false, error: '房间不存在' });
         return;
       }
-      const res = engine.join(payload.roomId, payload.name ?? '');
+      const res = engine.join(payload.roomId, payload.name ?? '', payload.userId ?? '');
       if (!res.ok || !res.player) {
         cb?.({ ok: false, error: res.error });
         return;
@@ -149,13 +197,20 @@ io.on('connection', (socket) => {
     cb?.(engine.postMessage(playerId, payload.text ?? ''));
   });
 
-  socket.on('vote:cast', (payload: { targetId?: string; reason?: string }, cb) => {
-    const playerId = socket.data.playerId as string | undefined;
-    if (!playerId) return cb?.({ ok: false, error: '未加入房间' });
-    cb?.(engine.castVote(playerId, payload.targetId ?? '', payload.reason ?? ''));
-  });
-
-  // ---------- 主持人 ----------
+  socket.on(
+    'vote:cast',
+    (payload: { targetId?: string; targetIds?: string[]; reason?: string }, cb) => {
+      const playerId = socket.data.playerId as string | undefined;
+      if (!playerId) return cb?.({ ok: false, error: '未加入房间' });
+      const ids =
+        Array.isArray(payload.targetIds) && payload.targetIds.length > 0
+          ? payload.targetIds
+          : payload.targetId
+            ? [payload.targetId]
+            : [];
+      cb?.(engine.castVote(playerId, ids, payload.reason ?? ''));
+    },
+  );
 
   socket.on('host:auth', (payload: { key?: string }, cb) => {
     if (payload.key !== config.hostKey) {
@@ -202,9 +257,18 @@ io.on('connection', (socket) => {
           if (!(roomId in engine.state.rooms)) return cb?.({ ok: false, error: '房间不存在' });
           const res = engine.setActiveRoom(roomId);
           if (!res.ok) return cb?.(res);
-          // AI 跟着房间走：清掉旧房间的 AI，重新布置到新房间
           clearAllAIs();
           seedDefaultAIs();
+          break;
+        }
+        case 'setMaxHumans': {
+          const res = engine.setMaxHumans(Number(payload.maxHumans));
+          if (!res.ok) return cb?.(res);
+          break;
+        }
+        case 'setAIModel': {
+          const res = engine.setAIModel(String(payload.playerId ?? ''), String(payload.model ?? ''));
+          if (!res.ok) return cb?.(res);
           break;
         }
         case 'reveal':
@@ -237,15 +301,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ---------- 管理：在线编辑 AI 配置 ----------
-
   socket.on('admin:get', async (_payload, cb) => {
     if (!socket.data.isHost) return cb?.({ ok: false, error: '无权限' });
     cb?.({
       ok: true,
       data: {
         config: getAiConfig(),
-        domainNotes: { tech: domainNotes('tech'), life: domainNotes('life') },
+        domainNotes: { food: domainNotes('food'), travel: domainNotes('travel') },
         modelList: await listModels(),
       },
     });
@@ -257,22 +319,22 @@ io.on('connection', (socket) => {
       const cfg = structuredClone(getAiConfig());
       switch (payload.section) {
         case 'domainNotes': {
-          const d = payload.data as { tech?: string; life?: string };
-          if (typeof d?.tech === 'string') setDomainNotes('tech', d.tech);
-          if (typeof d?.life === 'string') setDomainNotes('life', d.life);
+          const d = payload.data as { food?: string; travel?: string };
+          if (typeof d?.food === 'string') setDomainNotes('food', d.food);
+          if (typeof d?.travel === 'string') setDomainNotes('travel', d.travel);
           break;
         }
         case 'mainQuestions': {
-          const d = payload.data as { tech?: string; life?: string };
-          if (d?.tech?.trim()) cfg.mainQuestions.tech = d.tech.trim();
-          if (d?.life?.trim()) cfg.mainQuestions.life = d.life.trim();
+          const d = payload.data as { food?: string; travel?: string };
+          if (d?.food?.trim()) cfg.mainQuestions.food = d.food.trim();
+          if (d?.travel?.trim()) cfg.mainQuestions.travel = d.travel.trim();
           saveAiConfig(cfg);
           applyMainQuestions();
           break;
         }
         case 'personas': {
-          const d = payload.data as { tech?: Persona[]; life?: Persona[] };
-          for (const roomId of ['tech', 'life'] as const) {
+          const d = payload.data as { food?: Persona[]; travel?: Persona[] };
+          for (const roomId of ['food', 'travel'] as const) {
             const list = d?.[roomId];
             if (!Array.isArray(list)) continue;
             const cleaned = list
@@ -292,8 +354,8 @@ io.on('connection', (socket) => {
           const d = payload.data as Partial<Record<string, string>>;
           const keys = [
             'baseRules',
-            'roomContextTech',
-            'roomContextLife',
+            'roomContextFood',
+            'roomContextTravel',
             'strategyHigh',
             'strategyLow',
             'strategyMid',
@@ -328,7 +390,7 @@ io.on('connection', (socket) => {
         ok: true,
         data: {
           config: getAiConfig(),
-          domainNotes: { tech: domainNotes('tech'), life: domainNotes('life') },
+          domainNotes: { food: domainNotes('food'), travel: domainNotes('travel') },
           modelList: await listModels(),
         },
       });
@@ -343,13 +405,16 @@ io.on('connection', (socket) => {
     cb?.(await testConnection());
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     const playerId = socket.data.playerId as string | undefined;
     if (playerId) engine.setConnected(playerId, false);
+    console.log(`[socket] disconnect id=${socket.id} reason=${reason} playerId=${playerId || '-'}`);
   });
 });
 
 server.listen(config.port, () => {
-  console.log(`[boot] Who is AI server listening on :${config.port}`);
+  console.log(`[boot] Who is AI server listening on 0.0.0.0:${config.port}`);
+  console.log(`[boot] publicDir=${publicDir} exists=${hasPublic}`);
+  console.log(`[boot] health probe: GET /health`);
   console.log(`[boot] LLM: ${config.openaiBaseUrl} (${config.modelPrimary} -> ${config.modelFallback})`);
 });

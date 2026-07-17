@@ -23,10 +23,13 @@ export default function Countdown({ endsAt, offset }: Props) {
 
   return (
     <span
-      className={`font-mono text-lg font-bold tabular-nums ${
-        urgent ? 'text-red-400 animate-pulse' : 'text-emerald-400'
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-base font-bold tabular-nums border ${
+        urgent
+          ? 'text-[var(--danger)] border-[rgba(224,122,106,0.45)] bg-[rgba(224,122,106,0.1)] animate-pulse'
+          : 'text-[var(--signal-bright)] border-[rgba(61,155,143,0.35)] bg-[rgba(61,155,143,0.1)]'
       }`}
     >
+      <span className="text-[10px] font-sans font-medium tracking-wider opacity-70">TIME</span>
       {m}:{String(s).padStart(2, '0')}
     </span>
   );

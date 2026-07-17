@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getSocket, emitAck } from '../socket';
-import type { RoomId } from '../types';
+import { ROOM_LABEL, type RoomId } from '../types';
 
 interface MetaAck {
   ok: boolean;
@@ -9,18 +9,14 @@ interface MetaAck {
   title?: string;
 }
 
-const ROOM_CARD: Record<RoomId, { emoji: string; title: string; desc: string; cls: string }> = {
-  tech: {
-    emoji: '💻',
-    title: '技术聊天室',
-    desc: '聊技术相关话题',
-    cls: 'bg-sky-600 hover:bg-sky-500 text-sky-100',
+const ROOM_META: Record<RoomId, { desc: string; accent: string }> = {
+  food: {
+    desc: '围绕美食、餐厅、踩坑与推荐自由聊天',
+    accent: 'from-[#c47a4a]/20 to-transparent',
   },
-  life: {
-    emoji: '🌍',
-    title: '生活聊天室',
-    desc: '聊日常生活话题',
-    cls: 'bg-amber-600 hover:bg-amber-500 text-amber-100',
+  travel: {
+    desc: '围绕旅行、假期、目的地与经历自由聊天',
+    accent: 'from-[#3d9b8f]/20 to-transparent',
   },
 };
 
@@ -40,33 +36,70 @@ export default function Landing() {
     };
   }, []);
 
-  return (
-    <div className="min-h-full flex flex-col items-center justify-center gap-8 p-6">
-      <div className="text-center">
-        <h1 className="text-4xl font-black tracking-tight">
-          Who is <span className="text-emerald-400">AI</span>?
-        </h1>
-        <p className="mt-2 text-slate-400">人类鉴别测试 · 找出隐藏在你们中间的 AI</p>
-      </div>
+  const meta = activeRoom ? ROOM_META[activeRoom] : null;
+  const label = activeRoom ? ROOM_LABEL[activeRoom] : null;
 
-      <div className="flex flex-col gap-4 w-full max-w-sm">
-        {activeRoom === null ? (
-          <div className="text-center text-slate-500 py-8">正在获取本局房间…</div>
-        ) : (
+  return (
+    <div className="min-h-full flex flex-col items-center justify-center px-6 py-12 relative overflow-hidden">
+      <div className="w-full max-w-md text-center space-y-8">
+        <div className="anim-rise space-y-4">
+          <div className="inline-flex items-center gap-2 text-[11px] tracking-[0.22em] uppercase text-[var(--muted)]">
+            <span className="signal-dot inline-block h-1.5 w-1.5 rounded-full bg-[var(--signal)]" />
+            Identity Signal Test
+          </div>
+          <h1 className="font-display text-5xl sm:text-6xl font-bold tracking-tight leading-none">
+            Who is{' '}
+            <span className="bg-gradient-to-r from-[var(--signal-bright)] to-[var(--copper)] bg-clip-text text-transparent">
+              AI
+            </span>
+            ?
+          </h1>
+          <p className="text-[var(--muted)] text-sm sm:text-base leading-relaxed max-w-sm mx-auto">
+            两轮聊天，两轮投票。找出隐藏在你们中间的 AI。
+          </p>
+        </div>
+
+        <div className="anim-rise-delay-1">
+          {!activeRoom || !meta || !label ? (
+            <div className="surface rounded-2xl px-5 py-10 text-[var(--muted)] text-sm">正在连接本局房间…</div>
+          ) : (
+            <Link
+              to={`/room/${activeRoom}`}
+              className={`group relative block overflow-hidden rounded-2xl surface p-6 text-left transition hover:border-[rgba(212,165,116,0.35)]`}
+            >
+              <div
+                className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${meta.accent} opacity-80`}
+              />
+              <div className="relative">
+                <div className="text-xs tracking-widest uppercase text-[var(--copper)] mb-2">本局房间</div>
+                <div className="font-display text-2xl font-semibold">
+                  {label.emoji} {label.title}
+                </div>
+                <p className="mt-2 text-sm text-[var(--muted)] leading-relaxed">{meta.desc}</p>
+                <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[var(--signal-bright)] group-hover:gap-3 transition-all">
+                  进入游戏
+                  <span aria-hidden>→</span>
+                </div>
+              </div>
+            </Link>
+          )}
+        </div>
+
+        <div className="anim-rise-delay-2 flex flex-col items-center gap-3">
+          <div className="flex items-center gap-3 text-[11px] text-[var(--muted)] tracking-wide">
+            <span>两轮推理</span>
+            <span className="opacity-40">·</span>
+            <span>动态 AI</span>
+            <span className="opacity-40">·</span>
+            <span>阵营胜负</span>
+          </div>
           <Link
-            to={`/room/${activeRoom}`}
-            className={`rounded-2xl transition p-5 text-center ${ROOM_CARD[activeRoom].cls}`}
+            to="/host"
+            className="text-xs text-[var(--muted)] hover:text-[var(--copper)] transition tracking-wide"
           >
-            <div className="text-2xl text-white">
-              {ROOM_CARD[activeRoom].emoji} {ROOM_CARD[activeRoom].title}
-            </div>
-            <div className="text-sm mt-1">{ROOM_CARD[activeRoom].desc}</div>
-            <div className="text-xs mt-2 opacity-80">点击加入本局游戏</div>
+            主持人入口
           </Link>
-        )}
-        <Link to="/host" className="text-center text-slate-500 text-sm hover:text-slate-300 mt-2">
-          主持人入口
-        </Link>
+        </div>
       </div>
     </div>
   );

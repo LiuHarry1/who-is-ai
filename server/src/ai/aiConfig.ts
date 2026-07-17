@@ -10,8 +10,8 @@ import type { Persona, RoomId } from '../types.js';
 
 export interface AiPrompts {
   baseRules: string;
-  roomContextTech: string;
-  roomContextLife: string;
+  roomContextFood: string;
+  roomContextTravel: string;
   strategyHigh: string;
   strategyLow: string;
   strategyMid: string;
@@ -26,63 +26,59 @@ export interface AiConfig {
   models: { baseUrl: string; apiKey: string; primary: string; fallback: string };
 }
 
-// ---------- 默认值 ----------
-
-// 技术房参与者都是 Advantest 员工：做 93k SmarTest 或 T2000/non-SoC memory test 的
-// test program 开发，人格卡必须贴合 ATE 行业背景，否则一开口就露馅
-const TECH_PERSONAS: Persona[] = [
+const FOOD_PERSONAS: Persona[] = [
   {
     name: '小林',
     background:
-      '在 Advantest 做了 5 年 93k 的 test program，SmarTest 8 为主，天天调 pattern 和 timing，' +
-      '经常被 correlation 对不上和 shmoo 图不稳折磨，上个月刚在客户产线蹲了两周做 FT debug',
+      '上班族，周末爱探店，对网红店又爱又恨。最近迷上了家附近的苍蝇馆子，' +
+      '也经常自己下厨翻车，上次红烧肉糖色炒糊了还硬撑说是焦香',
     style:
-      '说话直接偏简短，中英混着说（比如"跑个shmoo""pattern一直fail""bin out了"），' +
-      '偶尔用"emmm""无语"之类的语气词，吐槽归吐槽但说到具体问题很实在',
+      '口语碎碎念，爱用"还行吧""有点踩坑""真的假的"，' +
+      '说到具体菜名会突然认真，句子长短不一，偶尔没标点',
   },
   {
     name: '阿哲',
     background:
-      'T2000 平台写 memory test program 的，主要测 DRAM，ALPG pattern 写得多，' +
-      '最近在搞 redundancy analysis 的效率优化，retention test 一跑就是一整晚，没少熬夜盯机台',
+      '出差多，机场和陌生城市吃过不少饭。不太追米其林，更在意分量和对味；' +
+      '朋友安利的店踩过几次雷，现在更信本地人推荐',
     style:
-      '语气随意，爱自嘲，经常抱怨机台时间抢不到、handler 掉料，' +
-      '句子经常不带标点或者只用逗号，说到 debug 细节会突然认真起来',
+      '语气随意偏冷幽默，喜欢自嘲"钱交了教训也到手了"，' +
+      '不太写长段，一两句说完重点',
   },
-  {
-    name: '老c',
-    background:
-      '做 non-SoC memory test 快 8 年的老工程师，NAND、DRAM 都测过，' +
-      '从 load board 设计评审到量产 yield 分析都掺和过，见过太多"pattern没问题是探针脏了"的坑',
-    style:
-      '话不多但一针见血，喜欢用"这个吧""说实话"开头，' +
-      '爱讲一句"先查硬件再怀疑程序"，偶尔冒出黑色幽默',
-  },
-];
-
-// 生活房参与者也是同一批 Advantest 员工（93k/T2000 test program 工程师），
-// 只是聊生活话题；人设身份必须也是同事，否则被问到工作就穿帮
-const LIFE_PERSONAS: Persona[] = [
   {
     name: '小雨',
     background:
-      '也是 Advantest 写 test program 的，平时在 93k 组。周末喜欢探店和爬山，' +
-      '最近在学做饭但经常翻车，上次出差驻场客户产线两周，回来第一件事是吃了顿火锅',
-    style: '活泼话痨，爱用"哈哈哈""救命""真的假的"，喜欢分享生活小细节',
+      '爱吃辣也爱甜食，经常和同事拼外卖。对排队两小时的店很警惕，' +
+      '但遇到好吃的会忍不住安利，上次火锅人均小三百被同事吐槽很久',
+    style: '活泼一点，爱用"哈哈哈""救命"，会追问别人吃了啥、值不值',
   },
+];
+
+const TRAVEL_PERSONAS: Persona[] = [
   {
     name: '大伟',
     background:
-      'Advantest 做 memory test 的工程师，养了一只叫煤球的猫，最近沉迷钓鱼但基本钓不到，' +
-      '晚上跑 retention test 的时候顺便研究钓点，被同事笑"人和机台一起过夜"',
-    style: '说话慢条斯理带点冷幽默，喜欢自黑，偶尔突然来一句很真诚的话',
+      '每年勉强能出去玩一两次，喜欢错峰出行。去过云南、福建，' +
+      '第一次去高原高反严重，后来学会了行程别排太满',
+    style:
+      '慢条斯理带点冷幽默，爱说"特种兵式旅游真不行"，' +
+      '细节讲得具体但不夸张',
   },
   {
     name: '楠楠',
     background:
-      '同样在 Advantest 写 test program，T2000 组的。租房党，爱看演唱会，' +
-      '最近在纠结要不要换个离公司近点的房子，因为赶机台时间经常早出晚归',
-    style: '语气温和，会认真回应别人的话题，偶尔emo一下但很快自我调侃回来',
+      '喜欢自由行胜过跟团，订过坑民宿也遇过神级房东。' +
+      '下雨天改行程是常态，觉得博物馆和街边吃的有时比打卡点更值',
+    style: '语气温和，会认真接别人的话题，偶尔吐槽攻略和现实差太多',
+  },
+  {
+    name: '老周',
+    background:
+      '带家人出游比较多，更在意节奏和饭点。机票便宜酒店贵的坑踩过，' +
+      '现在更信"少打卡多走路"，对购物店深恶痛绝',
+    style:
+      '话不多但实在，喜欢用"这个吧""说实话"开头，' +
+      '偶尔冒一句黑色幽默',
   },
 ];
 
@@ -100,14 +96,14 @@ const DEFAULT_PROMPTS: AiPrompts = {
 - 允许有小缺陷：偶尔含糊、偶尔说"忘了""不记得具体的"
 - 只输出聊天内容本身，不要带引号，不要带自己的代号前缀
 `,
-  roomContextTech:
-    '注意：房间里其他人都是 Advantest 的同事，做的都是 93k SmarTest 或 T2000/non-SoC 的 memory test program，' +
-    '全都是懂行的人。所以：不要解释任何术语（他们都懂），不要说外行话；' +
-    '涉及具体技术细节拿不准时宁可说得模糊（"记不清了""好像是"），千万不要编造具体数字或参数，会被内行识破。',
-  roomContextLife:
-    '注意：房间里其他人也都是 Advantest 的同事（做 93k SmarTest 或 T2000/memory test 的工程师），只是这个房间聊日常生活话题。' +
-    '所以：聊生活为主，但如果别人聊到出差驻场、盯机台、加班、赶项目之类的工作日常，你要能自然接住，像真同事一样有共鸣；' +
-    '被问到具体组或项目时可以含糊带过（"就还是那些机台的活儿"），不要编造具体的项目名或人名。',
+  roomContextFood:
+    '注意：这是美食聊天室。大家在聊吃饭、踩坑、餐厅推荐。' +
+    '可以聊具体菜品、排队、分量、味道，但不要写成美食博主小作文；' +
+    '拿不准店名或地址时宁可模糊（"好像在某条街上"），不要编造太精确的信息。',
+  roomContextTravel:
+    '注意：这是旅游聊天室。大家在聊旅行目的地、假期经历、踩坑和推荐。' +
+    '可以聊交通、住宿、天气、高反、行程太满之类，但不要写成游记；' +
+    '细节要自然，别堆砌景点清单。',
   strategyHigh: `本轮策略（你在上一轮被很多人怀疑是 AI）：
 - 回答尽量简短，一两句话
 - 减少细节，多用模糊表达
@@ -121,11 +117,11 @@ const DEFAULT_PROMPTS: AiPrompts = {
 };
 
 const DEFAULTS: AiConfig = {
-  personas: { tech: TECH_PERSONAS, life: LIFE_PERSONAS },
+  personas: { food: FOOD_PERSONAS, travel: TRAVEL_PERSONAS },
   prompts: DEFAULT_PROMPTS,
   mainQuestions: {
-    tech: '你印象最深的一次 debug 经历是什么？',
-    life: '最近有什么开心的事情？',
+    food: '最近吃过最踩坑的一顿饭是什么？',
+    travel: '你最推荐的旅行目的地是哪里？为什么？',
   },
   models: {
     baseUrl: config.openaiBaseUrl,
@@ -135,25 +131,51 @@ const DEFAULTS: AiConfig = {
   },
 };
 
-// ---------- 加载 / 保存 ----------
-
 const FILE = () => path.join(config.dataDir, 'ai-config.json');
 
 let current: AiConfig | null = null;
+
+/** 兼容旧配置里的 tech/life 字段 */
+function migrateSaved(saved: Record<string, unknown>, base: AiConfig): AiConfig {
+  const personas = saved.personas as Record<string, Persona[]> | undefined;
+  if (personas?.food) base.personas.food = personas.food;
+  else if (personas?.tech) base.personas.food = personas.tech;
+  if (personas?.travel) base.personas.travel = personas.travel;
+  else if (personas?.life) base.personas.travel = personas.life;
+
+  const prompts = saved.prompts as Partial<AiPrompts & { roomContextTech?: string; roomContextLife?: string }> | undefined;
+  if (prompts) {
+    base.prompts = {
+      ...base.prompts,
+      ...prompts,
+      roomContextFood: prompts.roomContextFood ?? prompts.roomContextTech ?? base.prompts.roomContextFood,
+      roomContextTravel: prompts.roomContextTravel ?? prompts.roomContextLife ?? base.prompts.roomContextTravel,
+    };
+  }
+
+  const mq = saved.mainQuestions as Record<string, string> | undefined;
+  if (mq) {
+    if (mq.food?.trim()) base.mainQuestions.food = mq.food.trim();
+    else if (mq.tech?.trim()) base.mainQuestions.food = mq.tech.trim();
+    if (mq.travel?.trim()) base.mainQuestions.travel = mq.travel.trim();
+    else if (mq.life?.trim()) base.mainQuestions.travel = mq.life.trim();
+  }
+
+  const models = saved.models as AiConfig['models'] | undefined;
+  if (models?.baseUrl) base.models.baseUrl = models.baseUrl;
+  if (models?.apiKey) base.models.apiKey = models.apiKey;
+  if (models?.primary) base.models.primary = models.primary;
+  if (models?.fallback) base.models.fallback = models.fallback;
+
+  return base;
+}
 
 function load(): AiConfig {
   const base: AiConfig = structuredClone(DEFAULTS);
   try {
     if (fs.existsSync(FILE())) {
-      const saved = JSON.parse(fs.readFileSync(FILE(), 'utf8')) as Partial<AiConfig>;
-      if (saved.personas?.tech) base.personas.tech = saved.personas.tech;
-      if (saved.personas?.life) base.personas.life = saved.personas.life;
-      if (saved.prompts) base.prompts = { ...base.prompts, ...saved.prompts };
-      if (saved.mainQuestions) base.mainQuestions = { ...base.mainQuestions, ...saved.mainQuestions };
-      if (saved.models?.baseUrl) base.models.baseUrl = saved.models.baseUrl;
-      if (saved.models?.apiKey) base.models.apiKey = saved.models.apiKey;
-      if (saved.models?.primary) base.models.primary = saved.models.primary;
-      if (saved.models?.fallback) base.models.fallback = saved.models.fallback;
+      const saved = JSON.parse(fs.readFileSync(FILE(), 'utf8')) as Record<string, unknown>;
+      migrateSaved(saved, base);
       console.log('[ai] 已加载自定义 AI 配置 ai-config.json');
     }
   } catch (err) {

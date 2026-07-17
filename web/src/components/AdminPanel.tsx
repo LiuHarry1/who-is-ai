@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { emitAck } from '../socket';
-import type { AdminData, AiPromptsCfg, PersonaCfg, RoomId } from '../types';
+import { ROOM_LABEL, type AdminData, type AiPromptsCfg, type PersonaCfg, type RoomId } from '../types';
 
 interface SaveAck {
   ok: boolean;
@@ -8,17 +8,17 @@ interface SaveAck {
   data?: AdminData;
 }
 
-const card = 'rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3';
-const inputCls =
-  'w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500';
+const card = 'surface rounded-2xl p-4 space-y-3';
+const inputCls = 'field w-full rounded-xl px-3 py-2 text-sm';
 const areaCls = inputCls + ' font-mono leading-relaxed';
-const saveBtn =
-  'rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 px-4 py-2 text-sm font-bold';
+const saveBtn = 'btn-primary rounded-xl disabled:opacity-40 px-4 py-2 text-sm';
+
+const ROOMS: RoomId[] = ['food', 'travel'];
 
 function SectionStatus({ msg }: { msg: string }) {
   if (!msg) return null;
   const isErr = msg.includes('失败') || msg.includes('错误');
-  return <span className={`text-xs ${isErr ? 'text-red-400' : 'text-emerald-400'}`}>{msg}</span>;
+  return <span className={`text-xs ${isErr ? 'text-[var(--danger)]' : 'text-[var(--signal-bright)]'}`}>{msg}</span>;
 }
 
 export default function AdminPanel({ onExit }: { onExit: () => void }) {
@@ -35,7 +35,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
 
   if (!data) {
     return (
-      <div className="min-h-full flex items-center justify-center text-slate-400">
+      <div className="min-h-full flex items-center justify-center text-[var(--muted)]">
         {loadError || '加载配置中…'}
       </div>
     );
@@ -43,8 +43,11 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
 
   return (
     <div className="min-h-full p-4 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-black">⚙️ 游戏内容设置</h1>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[11px] tracking-[0.18em] uppercase text-[var(--muted)]">Settings</div>
+          <h1 className="font-display text-xl font-bold">游戏内容设置</h1>
+        </div>
         <div className="flex gap-2 items-center">
           <button
             onClick={async () => {
@@ -52,19 +55,20 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
               const res = await emitAck<SaveAck>('admin:save', { section: 'resetDefaults' });
               if (res.ok && res.data) setData({ ...res.data });
             }}
-            className="rounded-xl bg-red-900 hover:bg-red-800 px-4 py-2 text-sm"
+            className="rounded-xl px-4 py-2 text-sm border border-[rgba(224,122,106,0.35)] bg-[rgba(224,122,106,0.1)] text-[var(--danger)]"
           >
             恢复默认
           </button>
-          <button onClick={onExit} className="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 text-sm">
+          <button onClick={onExit} className="chip rounded-xl px-4 py-2 text-sm">
             返回控制台
           </button>
         </div>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-[var(--muted)] leading-relaxed">
         所有修改保存后立即对之后的 AI 发言生效；只有"人格卡"是 AI 加入房间那一刻复制的——改完人格卡后，
         请在等待大厅阶段把对应房间的 AI 先"- AI"再"+ AI"重新加入。
+        每个 AI 使用的模型请在主持人控制台玩家列表中单独修改。
       </p>
 
       <Models data={data} />
@@ -76,8 +80,6 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   );
 }
 
-// ---------- 模型 ----------
-
 function Models({ data }: { data: AdminData }) {
   const [models, setModels] = useState(data.config.models);
   const [modelList, setModelList] = useState(data.modelList);
@@ -85,20 +87,19 @@ function Models({ data }: { data: AdminData }) {
   const [testMsg, setTestMsg] = useState('');
   const [testing, setTesting] = useState(false);
   const modelFields = [
-    { key: 'primary' as const, label: '主模型（对话生成）' },
+    { key: 'primary' as const, label: '默认主模型（复盘 / 未指定模型时）' },
     { key: 'fallback' as const, label: '降级模型（主模型失败/超时后使用）' },
   ];
   return (
     <div className={card}>
-      <div className="font-bold">🤖 LLM 接入</div>
-      <p className="text-xs text-slate-500">
+      <div className="font-display font-semibold">LLM 接入</div>
+      <p className="text-xs text-[var(--muted)]">
         下拉列表来自当前接入点的 /models 接口（共 {modelList.length} 个），也可以直接手动输入模型名。
-        注意：模型必须支持 chat/completions 接口（如 gpt-5.5 只支持 responses API，不可用）。
-        保存后立即生效；改了 URL/Key 后建议点"测试连接"确认可用。
+        每个 AI 机器人可在主持人控制台单独指定模型（默认第1个 claude-opus-4.6，第2个 gpt-5.5）。
       </p>
       <div className="grid sm:grid-cols-2 gap-3">
         <label className="block space-y-1">
-          <span className="text-xs text-slate-400">接入地址 Base URL（OpenAI 兼容，一般以 /v1 结尾）</span>
+          <span className="text-xs text-[var(--muted)]">接入地址 Base URL（OpenAI 兼容，一般以 /v1 结尾）</span>
           <input
             className={inputCls + ' font-mono'}
             value={models.baseUrl}
@@ -107,7 +108,7 @@ function Models({ data }: { data: AdminData }) {
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs text-slate-400">API Key</span>
+          <span className="text-xs text-[var(--muted)]">API Key</span>
           <input
             className={inputCls + ' font-mono'}
             type="password"
@@ -125,7 +126,7 @@ function Models({ data }: { data: AdminData }) {
       <div className="grid sm:grid-cols-2 gap-3">
         {modelFields.map((f) => (
           <label key={f.key} className="block space-y-1">
-            <span className="text-xs text-slate-400">{f.label}</span>
+            <span className="text-xs text-[var(--muted)]">{f.label}</span>
             <input
               className={inputCls + ' font-mono'}
               list="model-options"
@@ -149,7 +150,7 @@ function Models({ data }: { data: AdminData }) {
           保存 LLM 配置
         </button>
         <button
-          className="rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 px-4 py-2 text-sm"
+          className="chip rounded-xl disabled:opacity-40 px-4 py-2 text-sm"
           disabled={testing}
           onClick={async () => {
             setTesting(true);
@@ -168,17 +169,17 @@ function Models({ data }: { data: AdminData }) {
   );
 }
 
-// ---------- 主问题 ----------
-
 function MainQuestions({ data }: { data: AdminData }) {
   const [q, setQ] = useState(data.config.mainQuestions);
   const [msg, setMsg] = useState('');
   return (
     <div className={card}>
-      <div className="font-bold">📣 第一轮主问题</div>
-      {(['tech', 'life'] as RoomId[]).map((r) => (
+      <div className="font-display font-semibold">第一轮主问题</div>
+      {ROOMS.map((r) => (
         <label key={r} className="block space-y-1">
-          <span className="text-xs text-slate-400">{r === 'tech' ? '💻 技术聊天室' : '🌍 生活聊天室'}</span>
+          <span className="text-xs text-[var(--muted)]">
+            {ROOM_LABEL[r].emoji} {ROOM_LABEL[r].title}
+          </span>
           <input className={inputCls} value={q[r]} onChange={(e) => setQ({ ...q, [r]: e.target.value })} />
         </label>
       ))}
@@ -198,20 +199,20 @@ function MainQuestions({ data }: { data: AdminData }) {
   );
 }
 
-// ---------- 领域素材 ----------
-
 function DomainNotes({ data }: { data: AdminData }) {
   const [notes, setNotes] = useState(data.domainNotes);
   const [msg, setMsg] = useState('');
   return (
     <div className={card}>
-      <div className="font-bold">📚 领域素材（domain-notes）</div>
-      <p className="text-xs text-slate-500">
-        注入 AI prompt 的行话/战例/吐槽素材，AI 会当作自己的经历改编使用。保存即生效。别放涉密信息。
+      <div className="font-display font-semibold">领域素材（domain-notes）</div>
+      <p className="text-xs text-[var(--muted)]">
+        注入 AI prompt 的细节/经历素材，AI 会当作自己的经历改编使用。保存即生效。
       </p>
-      {(['tech', 'life'] as RoomId[]).map((r) => (
+      {ROOMS.map((r) => (
         <label key={r} className="block space-y-1">
-          <span className="text-xs text-slate-400">{r === 'tech' ? 'tech.md（技术房）' : 'life.md（生活房）'}</span>
+          <span className="text-xs text-[var(--muted)]">
+            {r}.md（{ROOM_LABEL[r].title}）
+          </span>
           <textarea
             className={areaCls}
             rows={10}
@@ -236,8 +237,6 @@ function DomainNotes({ data }: { data: AdminData }) {
   );
 }
 
-// ---------- 人格卡 ----------
-
 function Personas({ data }: { data: AdminData }) {
   const [personas, setPersonas] = useState(data.config.personas);
   const [msg, setMsg] = useState('');
@@ -249,16 +248,16 @@ function Personas({ data }: { data: AdminData }) {
 
   return (
     <div className={card}>
-      <div className="font-bold">🎭 AI 人格卡</div>
-      <p className="text-xs text-slate-500">
+      <div className="font-display font-semibold">AI 人格卡</div>
+      <p className="text-xs text-[var(--muted)]">
         修改后需要重新加入 AI 才生效（大厅阶段 - AI 再 + AI）。姓名仅主持人可见，玩家只看到匿名代号。
       </p>
-      {(['tech', 'life'] as RoomId[]).map((room) => (
+      {ROOMS.map((room) => (
         <div key={room} className="space-y-2">
-          <div className="text-sm font-bold text-slate-300">
-            {room === 'tech' ? '💻 技术房' : '🌍 生活房'}
+          <div className="text-sm font-semibold text-[var(--text)]">
+            {ROOM_LABEL[room].emoji} {ROOM_LABEL[room].title}
             <button
-              className="ml-2 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 px-2 py-1"
+              className="ml-2 chip text-xs rounded-lg px-2 py-1"
               onClick={() =>
                 setPersonas({
                   ...personas,
@@ -270,7 +269,7 @@ function Personas({ data }: { data: AdminData }) {
             </button>
           </div>
           {personas[room].map((p, i) => (
-            <div key={i} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 space-y-2">
+            <div key={i} className="rounded-xl border border-[var(--line)] bg-[rgba(11,14,18,0.45)] p-3 space-y-2">
               <div className="flex gap-2 items-center">
                 <input
                   className={inputCls + ' max-w-40'}
@@ -279,7 +278,7 @@ function Personas({ data }: { data: AdminData }) {
                   onChange={(e) => update(room, i, 'name', e.target.value)}
                 />
                 <button
-                  className="text-xs rounded-lg bg-red-900 hover:bg-red-800 px-2 py-1.5 shrink-0"
+                  className="text-xs rounded-lg px-2 py-1.5 shrink-0 border border-[rgba(224,122,106,0.35)] bg-[rgba(224,122,106,0.12)] text-[var(--danger)]"
                   onClick={() =>
                     setPersonas({ ...personas, [room]: personas[room].filter((_, j) => j !== i) })
                   }
@@ -322,12 +321,10 @@ function Personas({ data }: { data: AdminData }) {
   );
 }
 
-// ---------- Prompt ----------
-
 const PROMPT_FIELDS: { key: keyof AiPromptsCfg; label: string; rows: number }[] = [
   { key: 'baseRules', label: '基础规则（所有 AI 的铁律）', rows: 12 },
-  { key: 'roomContextTech', label: '技术房听众背景', rows: 4 },
-  { key: 'roomContextLife', label: '生活房听众背景', rows: 4 },
+  { key: 'roomContextFood', label: '美食房听众背景', rows: 4 },
+  { key: 'roomContextTravel', label: '旅游房听众背景', rows: 4 },
   { key: 'strategyHigh', label: '第二轮策略：高怀疑（被大量投票）', rows: 4 },
   { key: 'strategyLow', label: '第二轮策略：低怀疑（几乎没被投）', rows: 4 },
   { key: 'strategyMid', label: '第二轮策略：中等怀疑', rows: 2 },
@@ -339,11 +336,11 @@ function Prompts({ data }: { data: AdminData }) {
   const [msg, setMsg] = useState('');
   return (
     <div className={card}>
-      <div className="font-bold">🧠 Prompt 设置</div>
-      <p className="text-xs text-slate-500">保存后立即生效（包括规则讲解阶段的首答预生成）。改动前建议先复制备份。</p>
+      <div className="font-display font-semibold">Prompt 设置</div>
+      <p className="text-xs text-[var(--muted)]">保存后立即生效（包括规则讲解阶段的首答预生成）。改动前建议先复制备份。</p>
       {PROMPT_FIELDS.map((f) => (
         <label key={f.key} className="block space-y-1">
-          <span className="text-xs text-slate-400">{f.label}</span>
+          <span className="text-xs text-[var(--muted)]">{f.label}</span>
           <textarea
             className={areaCls}
             rows={f.rows}
