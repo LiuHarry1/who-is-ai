@@ -113,7 +113,94 @@ function AuthForm({ error, onAuth }: { error: string; onAuth: (key: string) => v
 }
 
 function hostAction(payload: Record<string, unknown>) {
-  return emitAck('host:action', payload);
+  return emitAck<{ ok: boolean; error?: string; filename?: string; humanLines?: number; full?: string; humanOnly?: string }>(
+    'host:action',
+    payload,
+  );
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function CorpusActions({ roomId }: { roomId: string }) {
+  const [msg, setMsg] = useState('');
+  return (
+    <div className="rounded-xl border border-[rgba(212,165,116,0.28)] bg-[rgba(212,165,116,0.08)] p-3 space-y-2">
+      <div className="text-xs text-[var(--copper)] font-semibold">本局聊天语料</div>
+      <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+        两轮聊完后可复制或保存。保存时只写入人类发言到 data/chat-corpus/{roomId}/，供下一局 AI 学语气。
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="chip rounded-lg px-3 py-1.5 text-xs"
+          onClick={() => {
+            void (async () => {
+              const res = await hostAction({ type: 'getTranscript' });
+              if (!res.ok || !res.humanOnly) {
+                setMsg(res.error ?? '暂无可复制内容');
+                return;
+              }
+              const ok = await copyText(res.humanOnly);
+              setMsg(ok ? `已复制 ${res.humanOnly.split('\n').length} 条人类发言` : '复制失败');
+            })();
+          }}
+        >
+          复制人类发言
+        </button>
+        <button
+          type="button"
+          className="chip rounded-lg px-3 py-1.5 text-xs"
+          onClick={() => {
+            void (async () => {
+              const res = await hostAction({ type: 'getTranscript' });
+              if (!res.ok || !res.full) {
+                setMsg(res.error ?? '暂无可复制内容');
+                return;
+              }
+              const ok = await copyText(res.full);
+              setMsg(ok ? '已复制完整记录' : '复制失败');
+            })();
+          }}
+        >
+          复制完整记录
+        </button>
+        <button
+          type="button"
+          className="btn-copper rounded-lg px-3 py-1.5 text-xs"
+          onClick={() => {
+            void (async () => {
+              const res = await hostAction({ type: 'saveCorpus' });
+              if (!res.ok) {
+                setMsg(res.error ?? '保存失败');
+                return;
+              }
+              setMsg(`已保存 ${res.filename}（${res.humanLines} 条）`);
+            })();
+          }}
+        >
+          保存为语料
+        </button>
+      </div>
+      {msg && <div className="text-[11px] text-[var(--signal-bright)]">{msg}</div>}
+    </div>
+  );
 }
 
 function PhaseProgress({ phase }: { phase: Phase }) {
@@ -172,7 +259,9 @@ function ConsoleView({
                 {PHASE_LABEL[state.phase]}
               </span>
               <span className="text-[var(--copper)]">
-                {humanCount} 人 + {aiCount} AI
+                {state.phase === 'LOBBY' || state.phase === 'REVEAL'
+                  ? `${humanCount} 人 + ${aiCount} AI`
+                  : `${room.players.length} 名玩家`}
               </span>
             </div>
           </div>
@@ -194,24 +283,33 @@ function ConsoleView({
         <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
           {room.players
             .filter((p) => p.codename)
-            .map((p) => (
-              <span
-                key={p.id}
-                title={p.isAI ? `AI · ${p.realName}` : `${p.realName}${p.connected ? '' : '（离线）'}`}
-                className={`inline-flex items-center gap-1.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
-                  p.isAI
-                    ? 'border-[rgba(224,122,106,0.4)] bg-[rgba(224,122,106,0.1)] text-[var(--danger)]'
-                    : 'border-[rgba(232,236,242,0.08)] bg-[rgba(26,33,43,0.65)] text-[var(--muted)]'
-                }`}
-              >
+            .map((p) => {
+              const showId = state.phase === 'LOBBY' || p.revealed;
+              return (
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    p.isAI || p.connected ? 'bg-[var(--signal)]' : 'bg-[var(--muted)]/40'
+                  key={p.id}
+                  title={
+                    showId
+                      ? p.isAI
+                        ? `AI · ${p.realName}`
+                        : `${p.realName}${p.connected ? '' : '（离线）'}`
+                      : p.codename
+                  }
+                  className={`inline-flex items-center gap-1.5 shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
+                    showId && p.isAI
+                      ? 'border-[rgba(224,122,106,0.4)] bg-[rgba(224,122,106,0.1)] text-[var(--danger)]'
+                      : 'border-[rgba(232,236,242,0.08)] bg-[rgba(26,33,43,0.65)] text-[var(--muted)]'
                   }`}
-                />
-                {p.codename}
-              </span>
-            ))}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      (showId && p.isAI) || p.connected ? 'bg-[var(--signal)]' : 'bg-[var(--muted)]/40'
+                    }`}
+                  />
+                  {p.codename}
+                </span>
+              );
+            })}
         </div>
       </header>
 
@@ -279,6 +377,10 @@ function ControlCard({ state, room }: { state: HostState; room: HostRoom }) {
           重置游戏
         </button>
       </div>
+
+      {(state.phase === 'ROUND2_VOTE' || state.phase === 'REVEAL') && (
+        <CorpusActions roomId={room.id} />
+      )}
 
       <div className="border-t border-[var(--line)] pt-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -403,8 +505,22 @@ function formatTs(ts: number) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
-function HostChatMessage({ m, sender }: { m: ChatMessage; sender: HostPlayer | undefined }) {
+/** 轮次开场说明已固定在玩家顶栏，主持人聊天区也不再展示 */
+function isPhaseBannerSystem(text: string): boolean {
+  return /聊天开始|投票开始|最终投票|策略调整|第二轮聊天即将开始/.test(text);
+}
+
+function HostChatMessage({
+  m,
+  sender,
+  showIdentity,
+}: {
+  m: ChatMessage;
+  sender: HostPlayer | undefined;
+  showIdentity: boolean;
+}) {
   if (m.system) {
+    if (isPhaseBannerSystem(m.text)) return null;
     return (
       <div className="text-center msg-enter">
         <span className="inline-block text-xs text-[var(--warn)] bg-[rgba(230,192,123,0.1)] border border-[rgba(230,192,123,0.28)] rounded-full px-3.5 py-1.5 leading-relaxed max-w-[92%]">
@@ -413,6 +529,7 @@ function HostChatMessage({ m, sender }: { m: ChatMessage; sender: HostPlayer | u
       </div>
     );
   }
+  const canShowId = Boolean(showIdentity && sender);
   return (
     <div className="flex gap-2 msg-enter">
       <span
@@ -424,17 +541,17 @@ function HostChatMessage({ m, sender }: { m: ChatMessage; sender: HostPlayer | u
       <div className="max-w-[85%]">
         <div className="text-[11px] text-[var(--muted)] px-1.5 mb-1 tracking-wide flex items-center gap-2">
           <span>{m.codename}</span>
-          {sender &&
-            (sender.isAI ? (
-              <span className="text-[var(--danger)] font-semibold">AI · {sender.realName}</span>
+          {canShowId &&
+            (sender!.isAI ? (
+              <span className="text-[var(--danger)] font-semibold">AI · {sender!.realName}</span>
             ) : (
-              <span className="text-[var(--signal-bright)]">{sender.realName}</span>
+              <span className="text-[var(--signal-bright)]">{sender!.realName}</span>
             ))}
           <span className="font-mono text-[10px] opacity-60">{formatTs(m.ts)}</span>
         </div>
         <div
           className={`inline-block rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm text-left break-words leading-relaxed ${
-            sender?.isAI ? 'bubble-mention' : 'bubble-other'
+            canShowId && sender?.isAI ? 'bubble-mention' : 'bubble-other'
           }`}
         >
           {renderMessageText(m.text)}
@@ -445,10 +562,20 @@ function HostChatMessage({ m, sender }: { m: ChatMessage; sender: HostPlayer | u
 }
 
 function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
-  const [tab, setTab] = useState<'players' | 'chat' | 'votes'>('players');
+  /** 投屏需要实时聊天：全程保留聊天 Tab；揭晓前只显示代号 */
+  const identityOpen = phase === 'LOBBY' || phase === 'REVEAL';
+  const showChatIdentity = phase === 'LOBBY';
+  const inChatPhase = phase === 'ROUND1_CHAT' || phase === 'ROUND2_CHAT';
+  const [tab, setTab] = useState<'players' | 'chat' | 'votes'>(inChatPhase ? 'chat' : 'players');
   const humans = room.players.filter((p) => !p.isAI);
   const ais = room.players.filter((p) => p.isAI);
   const playerById = useMemo(() => new Map(room.players.map((p) => [p.id, p])), [room.players]);
+
+  useEffect(() => {
+    if (inChatPhase) setTab('chat');
+  }, [inChatPhase]);
+
+  const tabs: Array<'players' | 'chat' | 'votes'> = ['players', 'chat', 'votes'];
 
   return (
     <div className="surface rounded-2xl p-4 space-y-3 anim-rise-delay-1">
@@ -458,7 +585,7 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
             {ROOM_LABEL[room.id].emoji} {room.title}
           </span>
           <span className="text-xs text-[var(--muted)] ml-2">
-            {humans.length} 人 + {ais.length} AI
+            {identityOpen ? `${humans.length} 人 + ${ais.length} AI` : `${room.players.length} 人`}
           </span>
         </div>
         {phase === 'LOBBY' && (
@@ -480,7 +607,7 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
       </div>
 
       <div className="flex gap-1.5">
-        {(['players', 'chat', 'votes'] as const).map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -498,48 +625,59 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
           <thead>
             <tr className="text-[var(--muted)] text-xs text-left">
               <th className="py-1 font-medium">代号</th>
-              <th className="font-medium">真名 / 模型</th>
+              <th className="font-medium">{identityOpen ? '真名 / 模型' : '状态'}</th>
               <th className="text-center font-medium">R1票</th>
               <th className="text-center font-medium">R2票</th>
               <th className="text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
-            {room.players.map((p) => (
-              <tr key={p.id} className="border-t border-[var(--line)]">
-                <td className="py-2 font-mono">
-                  {p.codename || <span className="text-[var(--muted)]/60">待分配</span>}
-                  {!p.connected && !p.isAI && <span className="text-[var(--danger)] text-xs ml-1">离线</span>}
-                </td>
-                <td>
-                  {p.isAI ? (
-                    <div className="space-y-1">
-                      <span className="text-[var(--danger)] font-bold">{p.realName}</span>
-                      <AIModelInput playerId={p.id} model={p.model} />
-                    </div>
-                  ) : (
-                    <>
-                      {p.realName}
-                      {p.userId && <span className="text-[var(--signal-bright)] text-xs ml-1">({p.userId})</span>}
-                    </>
-                  )}
-                </td>
-                <td className="text-center tabular-nums">{p.votesR1}</td>
-                <td className="text-center tabular-nums">{p.votesR2}</td>
-                <td className="text-right">
-                  {p.revealed ? (
-                    <span className="text-xs text-[var(--copper)]">已揭晓</span>
-                  ) : (
-                    <button
-                      onClick={() => void hostAction({ type: 'reveal', playerId: p.id })}
-                      className="chip text-xs rounded-lg px-2 py-1 hover:border-[rgba(212,165,116,0.45)]"
-                    >
-                      揭晓
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {room.players.map((p) => {
+              const showId = phase === 'LOBBY' || p.revealed;
+              return (
+                <tr key={p.id} className="border-t border-[var(--line)]">
+                  <td className="py-2 font-mono">
+                    {p.codename || <span className="text-[var(--muted)]/60">待分配</span>}
+                    {!p.connected && showId && !p.isAI && (
+                      <span className="text-[var(--danger)] text-xs ml-1">离线</span>
+                    )}
+                  </td>
+                  <td>
+                    {showId ? (
+                      p.isAI ? (
+                        <div className="space-y-1">
+                          <span className="text-[var(--danger)] font-bold">{p.realName}</span>
+                          {phase === 'LOBBY' && <AIModelInput playerId={p.id} model={p.model} />}
+                        </div>
+                      ) : (
+                        <>
+                          {p.realName}
+                          {p.userId && (
+                            <span className="text-[var(--signal-bright)] text-xs ml-1">({p.userId})</span>
+                          )}
+                        </>
+                      )
+                    ) : (
+                      <span className="text-[var(--muted)]/60 text-xs">揭晓后可见</span>
+                    )}
+                  </td>
+                  <td className="text-center tabular-nums">{p.votesR1}</td>
+                  <td className="text-center tabular-nums">{p.votesR2}</td>
+                  <td className="text-right">
+                    {p.revealed ? (
+                      <span className="text-xs text-[var(--copper)]">已揭晓</span>
+                    ) : (
+                      <button
+                        onClick={() => void hostAction({ type: 'reveal', playerId: p.id })}
+                        className="chip text-xs rounded-lg px-2 py-1 hover:border-[rgba(212,165,116,0.45)]"
+                      >
+                        揭晓
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -547,7 +685,12 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
       {tab === 'chat' && (
         <div className="max-h-96 overflow-y-auto space-y-3.5 pr-1 [scrollbar-gutter:stable]">
           {room.messages.map((m) => (
-            <HostChatMessage key={m.id} m={m} sender={playerById.get(m.playerId)} />
+            <HostChatMessage
+              key={m.id}
+              m={m}
+              sender={playerById.get(m.playerId)}
+              showIdentity={showChatIdentity}
+            />
           ))}
           {room.messages.length === 0 && (
             <div className="text-center py-8 text-xs text-[var(--muted)] tracking-wide">等待发言信号…</div>
@@ -567,10 +710,11 @@ function RoomPanel({ room, phase }: { room: HostRoom; phase: Phase }) {
                 const targets = voteTargets(v)
                   .map((id) => playerById.get(id)?.codename ?? '?')
                   .join('、');
+                const showVoterAi = identityOpen && voter?.revealed && voter.isAI;
                 return (
                   <div key={i} className="text-xs py-1.5 border-t border-[var(--line)]">
                     <span className="font-mono">{voter?.codename ?? '?'}</span>
-                    {voter?.isAI && <span className="text-[var(--danger)]">(AI)</span>} →{' '}
+                    {showVoterAi && <span className="text-[var(--danger)]">(AI)</span>} →{' '}
                     <span className="font-mono font-bold text-[var(--copper)]">{targets}</span>
                     <span className="text-[var(--muted)] ml-2">{v.reason}</span>
                   </div>
@@ -616,8 +760,10 @@ function BigScreen({ state, onExit }: { state: HostState; onExit: () => void }) 
         </div>
       )}
 
+      <CorpusActions roomId={room.id} />
+
       <div className="flex gap-2 flex-wrap anim-rise-delay-1">
-        {['① 投票对比', '② 逐个揭晓', '③ LLM 复盘', '④ 颁奖'].map((label, i) => (
+        {['① 投票对比', '② 逐个揭晓', '③ 颁奖'].map((label, i) => (
           <button
             key={i}
             onClick={() => setStep(i)}
@@ -630,8 +776,7 @@ function BigScreen({ state, onExit }: { state: HostState; onExit: () => void }) 
 
       {step === 0 && <VoteCompare room={room} />}
       {step === 1 && <StepReveal room={room} />}
-      {step === 2 && <RecapView recap={state.recap} />}
-      {step === 3 && <Awards state={state} />}
+      {step === 2 && <Awards state={state} />}
     </div>
   );
 }
@@ -736,53 +881,6 @@ function StepReveal({ room }: { room: HostRoom }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function RecapView({ recap }: { recap: RecapReport | null }) {
-  if (!recap) {
-    return (
-      <div className="surface rounded-2xl p-8 text-center text-[var(--muted)]">
-        LLM 复盘生成中，请稍候…
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 anim-rise-delay-2">
-      <div className="surface rounded-2xl p-6 space-y-2">
-        <div className="font-display text-xl font-bold">投票变化点评</div>
-        <p className="text-[var(--text)]/90 leading-relaxed">{recap.voteCommentary}</p>
-      </div>
-      <div className="surface rounded-2xl p-6 space-y-3">
-        <div className="font-display text-xl font-bold">最像真人的 AI 发言</div>
-        {recap.humanLikeAi.length === 0 && <div className="text-[var(--muted)] text-sm">暂无</div>}
-        {recap.humanLikeAi.map((h, i) => (
-          <div key={i} className="border-t border-[var(--line)] pt-3">
-            <div className="font-mono text-sm text-[var(--copper)]">{h.codename}</div>
-            <blockquote className="font-display text-lg my-1">「{h.text}」</blockquote>
-            <div className="text-sm text-[var(--muted)]">{h.analysis}</div>
-          </div>
-        ))}
-      </div>
-      <div className="surface rounded-2xl p-6 space-y-3">
-        <div className="font-display text-xl font-bold">最像 AI 的人类发言</div>
-        {recap.aiLikeHuman.length === 0 && <div className="text-[var(--muted)] text-sm">暂无</div>}
-        {recap.aiLikeHuman.map((h, i) => (
-          <div key={i} className="border-t border-[var(--line)] pt-3">
-            <div className="font-mono text-sm text-[var(--signal-bright)]">{h.codename}</div>
-            <blockquote className="font-display text-lg my-1">「{h.text}」</blockquote>
-            <div className="text-sm text-[var(--muted)]">{h.analysis}</div>
-          </div>
-        ))}
-      </div>
-      {recap.behaviorNotes && (
-        <div className="surface rounded-2xl p-6 space-y-2">
-          <div className="font-display text-xl font-bold">行为变化点评</div>
-          <p className="text-[var(--text)]/90 leading-relaxed">{recap.behaviorNotes}</p>
-        </div>
-      )}
     </div>
   );
 }

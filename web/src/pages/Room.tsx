@@ -10,7 +10,6 @@ import {
   voteTargets,
   type Phase,
   type PublicState,
-  type RecapReport,
   type RoomId,
   type Vote,
 } from '../types';
@@ -300,6 +299,23 @@ function GameView({
           </div>
         </div>
         <PhaseProgress phase={phase} />
+        {(isChat || isVote) && (
+          <div className="rounded-xl border border-[rgba(230,192,123,0.28)] bg-[rgba(230,192,123,0.1)] px-3 py-2 text-xs text-[var(--warn)] leading-relaxed space-y-1">
+            {isChat && room.mainQuestion && (
+              <div>
+                <span className="font-semibold text-[var(--copper)]">主问题 · </span>
+                {room.mainQuestion}
+              </div>
+            )}
+            <div className="text-[var(--muted)]">
+              {phase === 'ROUND1_CHAT' && '第一轮聊天：每人至少发言一次，可以 @ 任何人追问。'}
+              {phase === 'ROUND2_CHAT' &&
+                '第二轮聊天：已根据第一轮投票调整部分玩家行为。本轮每人最多 @ 一人提问。'}
+              {phase === 'ROUND1_VOTE' && '第一轮投票：选出你认为是 AI 的人，并附上理由。'}
+              {phase === 'ROUND2_VOTE' && '最终投票：可选 1～2 名 AI 候选人，本轮结果决定胜负。'}
+            </div>
+          </div>
+        )}
         {(showChat || phase === 'INTERMISSION') && (
           <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
             {room.players
@@ -452,6 +468,11 @@ function formatTs(ts: number) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
+/** 轮次开场说明已固定在顶栏，聊天区不再展示（兼容旧局已写入的系统消息） */
+function isPhaseBannerSystem(text: string): boolean {
+  return /聊天开始|投票开始|最终投票|策略调整|第二轮聊天即将开始/.test(text);
+}
+
 function ChatPanel({
   state,
   playerId,
@@ -555,6 +576,7 @@ function ChatPanel({
           const mine = m.playerId === playerId;
           const mentionsMe = m.mentions.includes(playerId);
           if (m.system) {
+            if (isPhaseBannerSystem(m.text)) return null;
             return (
               <div key={m.id} className="text-center msg-enter">
                 <span className="inline-block text-xs text-[var(--warn)] bg-[rgba(230,192,123,0.1)] border border-[rgba(230,192,123,0.28)] rounded-full px-3.5 py-1.5 leading-relaxed max-w-[92%]">
@@ -785,33 +807,6 @@ function VotePanel({
   );
 }
 
-function PlayerRecap({ recap }: { recap: RecapReport }) {
-  return (
-    <div className="space-y-2 text-left">
-      <div className="text-xs tracking-widest uppercase text-[var(--copper)]">本局复盘摘要</div>
-      {recap.voteCommentary && (
-        <p className="text-xs text-[var(--muted)] leading-relaxed">{recap.voteCommentary}</p>
-      )}
-      {recap.humanLikeAi[0] && (
-        <div className="text-xs">
-          <span className="text-[var(--copper)]">最像真人的 AI：</span>
-          <span className="text-[var(--text)]/90">
-            {recap.humanLikeAi[0].codename}「{recap.humanLikeAi[0].text}」
-          </span>
-        </div>
-      )}
-      {recap.aiLikeHuman[0] && (
-        <div className="text-xs">
-          <span className="text-[var(--signal-bright)]">最像 AI 的人类：</span>
-          <span className="text-[var(--text)]/90">
-            {recap.aiLikeHuman[0].codename}「{recap.aiLikeHuman[0].text}」
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function RevealPanel({ state, playerId }: { state: PublicState; playerId: string }) {
   return (
     <div className="shrink-0 border-t border-[rgba(230,192,123,0.28)] bg-[rgba(18,23,30,0.95)] p-4 max-h-[50%] overflow-y-auto space-y-3">
@@ -860,13 +855,6 @@ function RevealPanel({ state, playerId }: { state: PublicState; playerId: string
           </div>
         ))}
       </div>
-      {state.recap ? (
-        <div className="surface rounded-xl p-3">
-          <PlayerRecap recap={state.recap} />
-        </div>
-      ) : (
-        <div className="text-xs text-center text-[var(--muted)]">复盘生成中…</div>
-      )}
     </div>
   );
 }

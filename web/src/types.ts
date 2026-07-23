@@ -157,6 +157,14 @@ export interface AiPromptsCfg {
   strategyNone: string;
 }
 
+export interface CorpusFileMeta {
+  roomId: RoomId;
+  filename: string;
+  savedAt: string;
+  humanLines: number;
+  bytes: number;
+}
+
 export interface AdminData {
   config: {
     personas: Record<RoomId, PersonaCfg[]>;
@@ -165,6 +173,7 @@ export interface AdminData {
     models: { baseUrl: string; apiKey: string; primary: string; fallback: string };
   };
   domainNotes: Record<RoomId, string>;
+  chatCorpus: CorpusFileMeta[];
   modelList: string[];
 }
 

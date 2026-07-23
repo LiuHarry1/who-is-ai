@@ -74,6 +74,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       <Models data={data} />
       <MainQuestions data={data} />
       <DomainNotes data={data} />
+      <ChatCorpus data={data} onUpdate={setData} />
       <Personas data={data} />
       <Prompts data={data} />
     </div>
@@ -233,6 +234,56 @@ function DomainNotes({ data }: { data: AdminData }) {
         </button>
         <SectionStatus msg={msg} />
       </div>
+    </div>
+  );
+}
+
+function ChatCorpus({ data, onUpdate }: { data: AdminData; onUpdate: (d: AdminData) => void }) {
+  const [msg, setMsg] = useState('');
+  const list = data.chatCorpus ?? [];
+  return (
+    <div className={card}>
+      <div className="font-display font-semibold">真人聊天语料（chat-corpus）</div>
+      <p className="text-xs text-[var(--muted)]">
+        由主持人在两轮聊完后「保存为语料」写入 data/chat-corpus/&lt;room&gt;/。下一局 AI
+        接话时会抽样注入，学语气长短，禁止照抄。质量差的文件可删除。
+      </p>
+      {list.length === 0 && <div className="text-xs text-[var(--muted)]/70">暂无语料文件</div>}
+      <ul className="space-y-2 max-h-64 overflow-y-auto">
+        {list.map((f) => (
+          <li
+            key={`${f.roomId}/${f.filename}`}
+            className="flex items-center justify-between gap-2 text-xs border-t border-[var(--line)] pt-2"
+          >
+            <div className="min-w-0">
+              <div className="font-mono truncate">
+                {f.roomId}/{f.filename}
+              </div>
+              <div className="text-[var(--muted)]">
+                {f.humanLines} 条 · {f.savedAt}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg px-2.5 py-1 border border-[rgba(224,122,106,0.35)] text-[var(--danger)]"
+              onClick={async () => {
+                if (!confirm(`删除 ${f.filename}？`)) return;
+                const res = await emitAck<SaveAck>('admin:save', {
+                  section: 'deleteCorpus',
+                  data: { roomId: f.roomId, filename: f.filename },
+                });
+                if (res.ok && res.data) {
+                  onUpdate(res.data);
+                  setMsg('已删除');
+                } else setMsg(res.error ?? '删除失败');
+              }}
+            >
+              删除
+            </button>
+          </li>
+        ))}
+      </ul>
+      <SectionStatus msg={msg} />
     </div>
   );
 }
