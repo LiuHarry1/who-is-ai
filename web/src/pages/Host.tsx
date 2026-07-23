@@ -13,7 +13,6 @@ import {
   type HostRoom,
   type HostState,
   type Phase,
-  type RecapReport,
 } from '../types';
 
 const KEY_STORAGE = 'whoisai_host_key';

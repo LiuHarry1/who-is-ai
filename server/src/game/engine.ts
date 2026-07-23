@@ -255,7 +255,12 @@ export class GameEngine extends EventEmitter {
     if (roomId !== this.state.activeRoom) {
       return { ok: false, error: `本局游戏在「${this.activeRoomState().title}」进行，请从首页重新进入` };
     }
-    if (this.state.phase === 'REVEAL') return { ok: false, error: '游戏已结束' };
+    if (this.state.phase !== 'LOBBY') {
+      return {
+        ok: false,
+        error: this.state.phase === 'REVEAL' ? '游戏已结束' : '游戏已开始，无法加入',
+      };
+    }
     const humans = room.players.filter((p) => !p.isAI);
     if (humans.length >= this.state.maxHumans) return { ok: false, error: '房间已满' };
     const name = realName.trim().slice(0, 20);
@@ -350,24 +355,8 @@ export class GameEngine extends EventEmitter {
     this.state.phaseEndsAt = duration ? Date.now() + duration * 1000 : null;
     this.armTimer();
 
-    const room = this.activeRoomState();
-    if (phase === 'ROUND1_CHAT') {
-      this.postSystem(
-        room.id,
-        `第一轮聊天开始！主问题：${room.mainQuestion} 每人至少发言一次，可以 @ 任何人追问。`,
-      );
-    } else if (phase === 'ROUND1_VOTE') {
-      this.postSystem(room.id, '第一轮投票开始：你认为谁是 AI？请附上你的理由。');
-    } else if (phase === 'INTERMISSION') {
-      this.postSystem(room.id, '系统已根据第一轮结果完成策略调整，第二轮聊天即将开始。');
-    } else if (phase === 'ROUND2_CHAT') {
-      this.postSystem(
-        room.id,
-        '系统已经根据你们第一轮的判断，对部分玩家的行为模型做了调整。第二轮聊天开始！注意：本轮每人最多 @ 一人提问。',
-      );
-    } else if (phase === 'ROUND2_VOTE') {
-      this.postSystem(room.id, '最终投票开始：可选 1～2 名 AI 候选人，这一轮的结果将决定胜负！');
-    } else if (phase === 'REVEAL') {
+    // 轮次说明改由前端顶栏固定展示，不再写入聊天记录
+    if (phase === 'REVEAL') {
       this.state.outcome = this.computeOutcome();
       this.state.recap = null;
     }

@@ -11,9 +11,15 @@ import { AIManager } from './ai/scheduler.js';
 import { pickPersona } from './ai/personas.js';
 import { getAiConfig, saveAiConfig, resetAiConfig } from './ai/aiConfig.js';
 import { domainNotes, setDomainNotes } from './ai/domainNotes.js';
-import { generateRecap } from './ai/recap.js';
+import {
+  deleteChatCorpus,
+  extractHumanLines,
+  formatFullTranscript,
+  listChatCorpus,
+  saveChatCorpus,
+} from './ai/chatCorpus.js';
 import { listModels, testConnection } from './llm.js';
-import type { Persona, Phase, RoomId } from './types.js';
+import type { Persona, RoomId } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,21 +36,6 @@ if (snapshot) {
   applyMainQuestions();
 }
 attachSnapshot(engine);
-
-/** 揭晓阶段异步生成 LLM 复盘 */
-engine.on('phase', (phase: Phase) => {
-  if (phase !== 'REVEAL') return;
-  const room = engine.activeRoomState();
-  const outcome = engine.state.outcome;
-  void (async () => {
-    try {
-      const recap = await generateRecap(room, outcome);
-      if (engine.state.phase === 'REVEAL') engine.setRecap(recap);
-    } catch (err) {
-      console.warn('[recap] 生成失败:', (err as Error).message);
-    }
-  })();
-});
 
 function applyMainQuestions() {
   const q = getAiConfig().mainQuestions;
@@ -285,6 +276,21 @@ io.on('connection', (socket) => {
           for (const r of targets) if (r in engine.state.rooms) engine.postSystem(r, text);
           break;
         }
+        case 'saveCorpus': {
+          const room = engine.activeRoomState();
+          const res = saveChatCorpus(room.id, room.messages, room.players);
+          return cb?.(res);
+        }
+        case 'getTranscript': {
+          const room = engine.activeRoomState();
+          const humanLines = extractHumanLines(room.messages, room.players);
+          return cb?.({
+            ok: true,
+            full: formatFullTranscript(room.messages, room.players),
+            humanOnly: humanLines.join('\n'),
+            humanLines: humanLines.length,
+          });
+        }
         case 'reset':
           aiManager.clear();
           engine.reset();
@@ -308,6 +314,7 @@ io.on('connection', (socket) => {
       data: {
         config: getAiConfig(),
         domainNotes: { food: domainNotes('food'), travel: domainNotes('travel') },
+        chatCorpus: listChatCorpus(),
         modelList: await listModels(),
       },
     });
@@ -383,6 +390,13 @@ io.on('connection', (socket) => {
           resetAiConfig();
           applyMainQuestions();
           break;
+        case 'deleteCorpus': {
+          const d = payload.data as { roomId?: RoomId; filename?: string };
+          if (!d?.roomId || !d?.filename) return cb?.({ ok: false, error: '缺少参数' });
+          const res = deleteChatCorpus(d.roomId, d.filename);
+          if (!res.ok) return cb?.(res);
+          break;
+        }
         default:
           return cb?.({ ok: false, error: `未知配置项: ${payload.section}` });
       }
@@ -391,6 +405,7 @@ io.on('connection', (socket) => {
         data: {
           config: getAiConfig(),
           domainNotes: { food: domainNotes('food'), travel: domainNotes('travel') },
+          chatCorpus: listChatCorpus(),
           modelList: await listModels(),
         },
       });
